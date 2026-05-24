@@ -1,0 +1,65 @@
+import uuid
+from datetime import datetime
+from typing import Optional, TYPE_CHECKING
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database.session import Base
+from app.common.mixins.audit import AuditMixin
+
+if TYPE_CHECKING:
+    from app.module.income.schema.income import Income
+    from app.module.bank.schema.bank import Bank
+    from app.module.expense.schema.expense import Expense
+    from app.module.budget.schema.budget import Budget
+
+
+class User(AuditMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+    )
+    username: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+    )
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ISO 4217 currency code used as the default for new expenses
+    default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
+
+    incomes: Mapped[list["Income"]] = relationship(
+        "Income",
+        back_populates="user",
+        foreign_keys="Income.user_id",
+        cascade="all, delete-orphan",
+    )
+    banks: Mapped[list["Bank"]] = relationship(
+        "Bank",
+        back_populates="user",
+        foreign_keys="Bank.user_id",
+        cascade="all, delete-orphan",
+    )
+    expenses: Mapped[list["Expense"]] = relationship(
+        "Expense",
+        back_populates="user",
+        foreign_keys="Expense.user_id",
+        cascade="all, delete-orphan",
+    )
+    budgets: Mapped[list["Budget"]] = relationship(
+        "Budget",
+        back_populates="user",
+        foreign_keys="Budget.user_id",
+        cascade="all, delete-orphan",
+    )
