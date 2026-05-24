@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr
 class CreateUserDto(BaseModel):
     email: EmailStr
     username: str
-    password: str
+    passcode: str
     default_currency: str = "USD"
 
 
@@ -22,6 +22,7 @@ class UserResponseDto(BaseModel):
     email: str
     username: str
     is_active: bool
+    is_email_verified: bool
     default_currency: str
     created_at: datetime
 

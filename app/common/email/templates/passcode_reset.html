@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reset your passcode</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:#E8631A;padding:32px 40px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.5px;">Finclair</h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px;">
+              <p style="margin:0 0 8px;color:#111;font-size:18px;font-weight:600;">Hi {{ username }},</p>
+              <p style="margin:0 0 28px;color:#555;font-size:15px;line-height:1.6;">
+                We received a request to reset your Finclair passcode. Use the code below — it expires in <strong>10 minutes</strong>.
+              </p>
+
+              <!-- OTP box -->
+              <div style="background:#FFF4ED;border:2px solid #E8631A;border-radius:10px;text-align:center;padding:24px 0;margin-bottom:28px;">
+                <span style="font-size:40px;font-weight:700;letter-spacing:12px;color:#E8631A;">{{ code }}</span>
+              </div>
+
+              <p style="margin:0;color:#888;font-size:13px;line-height:1.6;">
+                If you didn't request a passcode reset, please secure your account immediately. This code will expire automatically.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#fafafa;padding:20px 40px;border-top:1px solid #eee;text-align:center;">
+              <p style="margin:0;color:#aaa;font-size:12px;">&copy; 2025 Finclair. All rights reserved.</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

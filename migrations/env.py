@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import settings
 from app.database.session import Base
 
-# All models must be imported here so Alembic can detect schema changes
+# All models must be imported so Alembic detects schema changes
 from app.module.user.schema.user import User  # noqa: F401
+from app.module.user.schema.user_goal import UserGoal  # noqa: F401
 from app.module.bank.schema.bank import Bank  # noqa: F401
 from app.module.income.schema.income import Income  # noqa: F401
 from app.module.category.schema.category import Category  # noqa: F401
@@ -16,6 +17,8 @@ from app.module.expense.schema.expense_category import expense_categories  # noq
 from app.module.expense.schema.expense import Expense  # noqa: F401
 from app.module.expense.schema.expense_item import ExpenseItem  # noqa: F401
 from app.module.budget.schema.budget import Budget  # noqa: F401
+from app.module.auth.schema.otp_token import OtpToken  # noqa: F401
+from app.module.auth.schema.session import Session  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

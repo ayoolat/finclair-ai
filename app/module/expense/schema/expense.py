@@ -35,7 +35,7 @@ class Expense(AuditMixin, Base):
     status: Mapped[str] = mapped_column(String(30), nullable=True)
     currency: Mapped[str] = mapped_column(String(10), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     expense_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
