@@ -10,6 +10,7 @@ from app.core.logging import configure_logging
 from app.core.startup import check_database, check_redis, run_startup_checks
 from app.module.auth.router import router as auth_router
 from app.module.email.router import router as email_router
+from app.module.income.router import router as income_router
 from app.module.user.router import router as user_router
 
 configure_logging(debug=settings.debug)
@@ -42,6 +43,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler) 
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(user_router, prefix="/api/v1")
 app.include_router(email_router, prefix="/api/v1")
+app.include_router(income_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])

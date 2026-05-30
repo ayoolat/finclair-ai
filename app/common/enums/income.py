@@ -9,7 +9,7 @@ class IncomeSource(str, Enum):
 
 
 class IncomeReoccurrence(str, Enum):
+    DAILY = "daily"
     WEEKLY = "weekly"
-    BIWEEKLY = "biweekly"
     MONTHLY = "monthly"
-    YEARLY = "yearly"
+    ONE_TIME = "one_time"

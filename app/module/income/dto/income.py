@@ -1,0 +1,71 @@
+import uuid
+from datetime import date
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, field_validator
+
+from app.common.enums.income import IncomeReoccurrence, IncomeSource
+
+
+class CreateIncomeDto(BaseModel):
+    amount: Decimal
+    source: str
+    reoccurrence: IncomeReoccurrence
+    note: Optional[str] = None
+    start_date: date
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("Amount must be greater than zero.")
+        return v
+
+    @field_validator("source")
+    @classmethod
+    def source_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Source cannot be empty.")
+        if len(v) > 50:
+            raise ValueError("Source must be 50 characters or fewer.")
+        return v
+
+
+class UpdateIncomeDto(BaseModel):
+    amount: Optional[Decimal] = None
+    source: Optional[str] = None
+    reoccurrence: Optional[IncomeReoccurrence] = None
+    note: Optional[str] = None
+    start_date: Optional[date] = None
+
+
+class IncomeResponseDto(BaseModel):
+    id: uuid.UUID
+    amount: Decimal
+    source: str
+    reoccurrence: str
+    note: Optional[str]
+    start_date: date
+
+    model_config = {"from_attributes": True}
+
+
+class CreateCustomSourceDto(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("Source name cannot be empty.")
+        if len(v) > 50:
+            raise ValueError("Source name must be 50 characters or fewer.")
+        return v
+
+
+class IncomeSourceDto(BaseModel):
+    name: str
+    is_custom: bool
