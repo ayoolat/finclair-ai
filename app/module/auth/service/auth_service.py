@@ -176,7 +176,7 @@ class AuthService:
 
     async def _get_user_by_email(self, email: str) -> Optional[User]:
         result = await self._db.execute(select(User).where(User.email == email))
-        return result.first()
+        return result.scalar_one_or_none()
 
     async def _email_exists(self, email: str) -> bool:
         result = await self._db.execute(select(User.id).where(User.email == email))

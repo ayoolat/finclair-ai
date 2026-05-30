@@ -1,11 +1,33 @@
 import logging
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.database.session import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
+
+
+async def run_migrations() -> None:
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    def _upgrade(connection: object) -> None:
+        alembic_cfg = Config("alembic.ini")
+        alembic_cfg.attributes["connection"] = connection
+        command.upgrade(alembic_cfg, "head")
+
+    engine = create_async_engine(settings.database_url)
+    try:
+        async with engine.connect() as conn:
+            await conn.run_sync(_upgrade)
+        logger.info("Migrations      ✓  applied")
+    except Exception as exc:
+        logger.error("Migrations      ✗  FAILED — %s", exc)
+        raise
+    finally:
+        await engine.dispose()
 
 
 async def check_database() -> bool:
@@ -36,6 +58,7 @@ async def run_startup_checks() -> None:
     logger.info("  debug=%s", settings.debug)
     logger.info("━" * 52)
 
+    await run_migrations()
     db_ok = await check_database()
     redis_ok = check_redis()
 

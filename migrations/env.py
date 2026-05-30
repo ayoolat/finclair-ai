@@ -52,7 +52,13 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    # When called programmatically (e.g. on startup), a live connection is
+    # injected via config.attributes so we don't create a second engine.
+    injected_conn = config.attributes.get("connection")
+    if injected_conn is not None:
+        do_run_migrations(injected_conn)
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

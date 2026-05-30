@@ -15,9 +15,9 @@ class RegisterDto(BaseModel):
 
     @field_validator("passcode")
     @classmethod
-    def passcode_must_be_four_digits(cls, v: str) -> str:
-        if not v.isdigit() or len(v) != 4:
-            raise ValueError("Passcode must be exactly 4 digits.")
+    def passcode_must_be_six_digits(cls, v: str) -> str:
+        if not v.isdigit() or len(v) != 6:
+            raise ValueError("Passcode must be exactly 6 digits.")
         return v
 
     @field_validator("username")
@@ -53,9 +53,9 @@ class ResetPasscodeDto(BaseModel):
 
     @field_validator("new_passcode")
     @classmethod
-    def passcode_must_be_four_digits(cls, v: str) -> str:
-        if not v.isdigit() or len(v) != 4:
-            raise ValueError("Passcode must be exactly 4 digits.")
+    def passcode_must_be_six_digits(cls, v: str) -> str:
+        if not v.isdigit() or len(v) != 6:
+            raise ValueError("Passcode must be exactly 6 digits.")
         return v
 
 
