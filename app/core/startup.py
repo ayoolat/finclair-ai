@@ -25,7 +25,6 @@ async def run_migrations() -> None:
         logger.info("Migrations      ✓  applied")
     except Exception as exc:
         logger.error("Migrations      ✗  FAILED — %s", exc)
-        raise
     finally:
         await engine.dispose()
 
