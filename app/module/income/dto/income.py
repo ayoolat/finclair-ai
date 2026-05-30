@@ -5,12 +5,12 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
-from app.common.enums.income import IncomeReoccurrence, IncomeSource
+from app.common.enums.income import IncomeReoccurrence
 
 
 class CreateIncomeDto(BaseModel):
     amount: Decimal
-    source: str
+    source_id: uuid.UUID
     reoccurrence: IncomeReoccurrence
     note: Optional[str] = None
     start_date: date
@@ -22,20 +22,10 @@ class CreateIncomeDto(BaseModel):
             raise ValueError("Amount must be greater than zero.")
         return v
 
-    @field_validator("source")
-    @classmethod
-    def source_not_empty(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Source cannot be empty.")
-        if len(v) > 50:
-            raise ValueError("Source must be 50 characters or fewer.")
-        return v
-
 
 class UpdateIncomeDto(BaseModel):
     amount: Optional[Decimal] = None
-    source: Optional[str] = None
+    source_id: Optional[uuid.UUID] = None
     reoccurrence: Optional[IncomeReoccurrence] = None
     note: Optional[str] = None
     start_date: Optional[date] = None
@@ -44,7 +34,8 @@ class UpdateIncomeDto(BaseModel):
 class IncomeResponseDto(BaseModel):
     id: uuid.UUID
     amount: Decimal
-    source: str
+    source_id: uuid.UUID
+    source_name: str
     reoccurrence: str
     note: Optional[str]
     start_date: date
@@ -67,5 +58,6 @@ class CreateCustomSourceDto(BaseModel):
 
 
 class IncomeSourceDto(BaseModel):
+    id: uuid.UUID
     name: str
-    is_custom: bool
+    is_default: bool

@@ -19,7 +19,7 @@ from app.module.expense.schema.expense_item import ExpenseItem  # noqa: F401
 from app.module.budget.schema.budget import Budget  # noqa: F401
 from app.module.auth.schema.otp_token import OtpToken  # noqa: F401
 from app.module.auth.schema.session import Session  # noqa: F401
-from app.module.income.schema.income_source import UserIncomeSource  # noqa: F401
+from app.module.income.schema.income_source import IncomeSource  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
