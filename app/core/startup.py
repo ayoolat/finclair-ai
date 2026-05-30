@@ -29,6 +29,29 @@ async def run_migrations() -> None:
         await engine.dispose()
 
 
+async def seed_income_sources() -> None:
+    from sqlalchemy import select
+    from app.module.income.schema.income_source import IncomeSource
+
+    defaults = ["Salary", "Freelance", "Business", "Investment"]
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(IncomeSource).where(IncomeSource.is_default == True)  # noqa: E712
+            )
+            existing_names = {row.name for row in result.scalars().all()}
+            missing = [name for name in defaults if name not in existing_names]
+            if missing:
+                for name in missing:
+                    session.add(IncomeSource(name=name, user_id=None, is_default=True))
+                await session.commit()
+                logger.info("Income sources  ✓  seeded (%s)", ", ".join(missing))
+            else:
+                logger.info("Income sources  ✓  present")
+    except Exception as exc:
+        logger.error("Income sources  ✗  seed FAILED — %s", exc)
+
+
 async def check_database() -> bool:
     try:
         async with AsyncSessionLocal() as session:
@@ -58,6 +81,7 @@ async def run_startup_checks() -> None:
     logger.info("━" * 52)
 
     await run_migrations()
+    await seed_income_sources()
     db_ok = await check_database()
     redis_ok = check_redis()
 
