@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.email.service import enqueue_otp_email, enqueue_passcode_reset_email
 from app.common.enums.user import OtpType
+from app.core.config import settings
 from app.common.response import Result
 from app.common.security.hasher import hash_passcode, verify_passcode
 from app.common.security.token import create_access_token
@@ -56,7 +57,10 @@ class AuthService:
         await self._db.commit()
 
         enqueue_otp_email(to=user.email, username=user.username, code=otp.code)
-        return Result.ok({"message": "Verification code sent to your email."}, status_code=201)
+        payload: dict = {"message": "Verification code sent to your email."}
+        if settings.debug:
+            payload["otp"] = otp.code
+        return Result.ok(payload, status_code=201)
 
     async def verify_email(self, dto: VerifyEmailDto) -> Result[TokenPairResponseDto]:
         user = await self._get_user_by_email(dto.email)
