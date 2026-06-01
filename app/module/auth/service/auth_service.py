@@ -91,7 +91,10 @@ class AuthService:
         await self._db.commit()
 
         enqueue_otp_email(to=user.email, username=user.username, code=otp.code)
-        return Result.ok({"message": "Verification code resent."})
+        payload: dict = {"message": "Verification code resent."}
+        if settings.debug:
+            payload["otp"] = otp.code
+        return Result.ok(payload)
 
     async def login(self, dto: LoginDto) -> Result[TokenPairResponseDto]:
         user = await self._get_user_by_email(dto.email)
@@ -135,7 +138,10 @@ class AuthService:
         await self._db.commit()
 
         enqueue_passcode_reset_email(to=user.email, username=user.username, code=otp.code)
-        return Result.ok({"message": "If that email exists, a reset code has been sent."})
+        payload = {"message": "If that email exists, a reset code has been sent."}
+        if settings.debug:
+            payload["otp"] = otp.code
+        return Result.ok(payload)
 
     async def reset_passcode(self, dto: ResetPasscodeDto) -> Result[TokenPairResponseDto]:
         user = await self._get_user_by_email(dto.email)
