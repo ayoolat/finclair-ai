@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +9,18 @@ from app.module.user.dto.user import UserResponseDto
 from app.module.user.service.user_service import UserService
 
 router = APIRouter(prefix="/user", tags=["user"])
+
+
+@router.get("/check-username", response_model=ApiResponse[dict])
+async def check_username(
+    username: str = Query(..., min_length=1, max_length=50),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    available = await UserService(db).username_available(username)
+    return JSONResponse(
+        status_code=200,
+        content=ApiResponse.ok(data={"username": username.strip().lower(), "available": available}).model_dump(),
+    )
 
 
 @router.get("/me", response_model=ApiResponse[UserResponseDto])

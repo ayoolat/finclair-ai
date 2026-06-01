@@ -12,6 +12,10 @@ class UserService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    async def username_available(self, username: str) -> bool:
+        result = await self._db.execute(select(User).where(User.username == username.strip().lower()))
+        return result.scalar_one_or_none() is None
+
     async def get_by_id(self, user_id: uuid.UUID) -> Result[UserResponseDto]:
         result = await self._db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
