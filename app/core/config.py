@@ -34,6 +34,25 @@ class Settings(BaseSettings):
     # Frontend URL used in email links
     frontend_url: str = "http://localhost:3000"
 
+    # Mono — bank account linking and transaction sync
+    mono_secret_key: str
+
+    # Paystack — bank list sync
+    paystack_secret_key: str
+
+    # OpenAI — receipt OCR
+    openai_api_key: str
+    ocr_provider: str = "openai"
+
+    # Digital Ocean Spaces — file storage
+    storage_provider: str = "spaces"
+    spaces_key: str
+    spaces_secret: str
+    spaces_region: str
+    spaces_bucket: str
+    spaces_endpoint_url: str
+    spaces_cdn_url: str
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
