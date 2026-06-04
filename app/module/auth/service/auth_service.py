@@ -28,6 +28,7 @@ from app.module.auth.dto.auth import (
 )
 from app.module.auth.service.otp_service import OtpService
 from app.module.auth.service.session_service import SessionService
+from app.module.goal.schema.financial_goal import FinancialGoal
 from app.module.user.schema.user import User
 from app.module.user.schema.user_goal import UserGoal
 
@@ -164,12 +165,19 @@ class AuthService:
         if result.scalar_one_or_none() is None:
             return Result.fail("User not found.", error_code="USER_NOT_FOUND", status_code=404)
 
+        goal_rows = await self._db.execute(
+            select(FinancialGoal).where(FinancialGoal.id.in_(dto.goals))
+        )
+        found_goals = goal_rows.scalars().all()
+        if len(found_goals) != len(dto.goals):
+            return Result.fail("One or more goal IDs are invalid.", error_code="INVALID_GOALS", status_code=400)
+
         existing = await self._db.execute(select(UserGoal).where(UserGoal.user_id == user_id))
         for record in existing.scalars().all():
             await self._db.delete(record)
 
-        for goal in dto.goals:
-            self._db.add(UserGoal(user_id=user_id, goal=goal))
+        for goal in found_goals:
+            self._db.add(UserGoal(user_id=user_id, goal=goal.key))
 
         await self._db.commit()
         return Result.ok({"message": "Goals saved."})

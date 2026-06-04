@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from pydantic import BaseModel, BeforeValidator, EmailStr, field_validator
@@ -60,7 +61,7 @@ class ResetPasscodeDto(BaseModel):
 
 
 class OnboardingGoalsDto(BaseModel):
-    goals: list[str]
+    goals: list[uuid.UUID]
 
 
 class RefreshTokenDto(BaseModel):
