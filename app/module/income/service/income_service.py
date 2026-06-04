@@ -47,7 +47,7 @@ class IncomeService:
         if existing.scalar_one_or_none() is not None:
             return Result.fail("Source already exists.", error_code="SOURCE_EXISTS", status_code=409)
 
-        source = IncomeSource(user_id=user_id, name=dto.name, is_default=False)
+        source = IncomeSource(user_id=user_id, name=dto.name, is_default=False, created_by=user_id)
         self._db.add(source)
         await self._db.commit()
         await self._db.refresh(source)
@@ -66,7 +66,7 @@ class IncomeService:
 
         income = await self._get_current(user_id)
         if income is None:
-            income = Income(user_id=user_id)
+            income = Income(user_id=user_id, created_by=user_id)
             self._db.add(income)
 
         income.source_id = dto.source_id  # type: ignore[union-attr]
@@ -74,6 +74,7 @@ class IncomeService:
         income.reoccurrence = dto.reoccurrence.value  # type: ignore[union-attr]
         income.note = dto.note  # type: ignore[union-attr]
         income.start_date = dto.start_date  # type: ignore[union-attr]
+        income.updated_by = user_id  # type: ignore[union-attr]
 
         await self._db.commit()
         income = await self._get_current(user_id)
@@ -97,6 +98,7 @@ class IncomeService:
             income.note = dto.note
         if dto.start_date is not None:
             income.start_date = dto.start_date
+        income.updated_by = user_id
 
         await self._db.commit()
         income = await self._get_current(user_id)

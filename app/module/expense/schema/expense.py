@@ -8,15 +8,17 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.session import Base
 from app.common.mixins.audit import AuditMixin
+from app.common.mixins.soft_delete import SoftDeleteMixin
 from app.common.enums.expense import ExpenseType, ExpenseDirection, ExpenseStatus
 
 if TYPE_CHECKING:
     from app.module.user.schema.user import User
     from app.module.category.schema.category import Category
     from app.module.expense.schema.expense_item import ExpenseItem
+    from app.module.file.schema.file import File
 
 
-class Expense(AuditMixin, Base):
+class Expense(SoftDeleteMixin, AuditMixin, Base):
     __tablename__ = "expenses"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -39,6 +41,10 @@ class Expense(AuditMixin, Base):
     expense_date: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    file_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("files.id"), nullable=True
+    )
 
     user: Mapped["User"] = relationship(
         "User",
@@ -54,6 +60,10 @@ class Expense(AuditMixin, Base):
         "ExpenseItem",
         back_populates="expense",
         cascade="all, delete-orphan",
+    )
+    file: Mapped[Optional["File"]] = relationship(
+        "File",
+        foreign_keys=[file_id],
     )
 
     @property
