@@ -130,12 +130,68 @@ async def seed_categories() -> None:
         logger.error("Categories      ✗  seed FAILED — %s", exc)
 
 
+_NIGERIAN_BANKS_SEED = [
+    {"paystack_id": 1,   "name": "Access Bank",                  "code": "044", "slug": "access-bank",                  "bank_type": "nuban"},
+    {"paystack_id": 2,   "name": "Citibank Nigeria",              "code": "023", "slug": "citibank-nigeria",              "bank_type": "nuban"},
+    {"paystack_id": 3,   "name": "Diamond Bank",                  "code": "063", "slug": "diamond-bank",                  "bank_type": "nuban"},
+    {"paystack_id": 4,   "name": "Dynamic Standard Bank",         "code": "526", "slug": "dynamic-standard-bank",         "bank_type": "nuban"},
+    {"paystack_id": 5,   "name": "Ecobank Nigeria",               "code": "050", "slug": "ecobank-nigeria",               "bank_type": "nuban"},
+    {"paystack_id": 6,   "name": "Fidelity Bank",                 "code": "070", "slug": "fidelity-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 7,   "name": "First Bank of Nigeria",         "code": "011", "slug": "first-bank-of-nigeria",         "bank_type": "nuban"},
+    {"paystack_id": 8,   "name": "First City Monument Bank",      "code": "214", "slug": "first-city-monument-bank",      "bank_type": "nuban"},
+    {"paystack_id": 9,   "name": "Guaranty Trust Bank",           "code": "058", "slug": "guaranty-trust-bank",           "bank_type": "nuban"},
+    {"paystack_id": 10,  "name": "Heritage Bank",                 "code": "030", "slug": "heritage-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 11,  "name": "Jaiz Bank",                     "code": "301", "slug": "jaiz-bank",                     "bank_type": "nuban"},
+    {"paystack_id": 12,  "name": "Keystone Bank",                 "code": "082", "slug": "keystone-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 13,  "name": "Kuda Bank",                     "code": "090267", "slug": "kuda-bank",                  "bank_type": "nuban"},
+    {"paystack_id": 14,  "name": "Moniepoint Microfinance Bank",  "code": "50515", "slug": "moniepoint-mfb",              "bank_type": "nuban"},
+    {"paystack_id": 15,  "name": "OPay",                          "code": "999992", "slug": "opay",                       "bank_type": "nuban"},
+    {"paystack_id": 16,  "name": "Palmpay",                       "code": "999991", "slug": "palmpay",                    "bank_type": "nuban"},
+    {"paystack_id": 17,  "name": "Polaris Bank",                  "code": "076", "slug": "polaris-bank",                  "bank_type": "nuban"},
+    {"paystack_id": 18,  "name": "Providus Bank",                 "code": "101", "slug": "providus-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 19,  "name": "Stanbic IBTC Bank",             "code": "039", "slug": "stanbic-ibtc-bank",             "bank_type": "nuban"},
+    {"paystack_id": 20,  "name": "Standard Chartered Bank",       "code": "068", "slug": "standard-chartered-bank",       "bank_type": "nuban"},
+    {"paystack_id": 21,  "name": "Sterling Bank",                 "code": "232", "slug": "sterling-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 22,  "name": "Suntrust Bank",                 "code": "100", "slug": "suntrust-bank",                 "bank_type": "nuban"},
+    {"paystack_id": 23,  "name": "Union Bank of Nigeria",         "code": "032", "slug": "union-bank-of-nigeria",         "bank_type": "nuban"},
+    {"paystack_id": 24,  "name": "United Bank for Africa",        "code": "033", "slug": "united-bank-for-africa",        "bank_type": "nuban"},
+    {"paystack_id": 25,  "name": "Unity Bank",                    "code": "215", "slug": "unity-bank",                    "bank_type": "nuban"},
+    {"paystack_id": 26,  "name": "VFD Microfinance Bank",         "code": "090110", "slug": "vfd-mfb",                    "bank_type": "nuban"},
+    {"paystack_id": 27,  "name": "Wema Bank",                     "code": "035", "slug": "wema-bank",                     "bank_type": "nuban"},
+    {"paystack_id": 28,  "name": "Zenith Bank",                   "code": "057", "slug": "zenith-bank",                   "bank_type": "nuban"},
+]
+
+
 async def sync_paystack_banks() -> None:
     import asyncio
     from sqlalchemy import select
     from app.common.clients.paystack_client import get_paystack_client
     from app.module.paystack_bank.schema.paystack_bank import PaystackBank
 
+    # Always ensure seed banks exist first
+    async with AsyncSessionLocal() as session:
+        existing = await session.execute(select(PaystackBank.paystack_id))
+        existing_ids = {row[0] for row in existing.all()}
+
+        missing_seeds = [b for b in _NIGERIAN_BANKS_SEED if b["paystack_id"] not in existing_ids]
+        for b in missing_seeds:
+            session.add(PaystackBank(
+                paystack_id=b["paystack_id"],
+                name=b["name"],
+                code=b["code"],
+                slug=b["slug"],
+                country="NG",
+                currency="NGN",
+                bank_type=b["bank_type"],
+                is_active=True,
+            ))
+        if missing_seeds:
+            await session.commit()
+            logger.info("Paystack banks  ✓  seeded (%d banks)", len(missing_seeds))
+        else:
+            logger.info("Paystack banks  ✓  present")
+
+    # Then try to refresh from live Paystack API (non-fatal if it fails)
     try:
         client = get_paystack_client()
         response = await asyncio.to_thread(
@@ -161,14 +217,11 @@ async def sync_paystack_banks() -> None:
                     is_active=b.get("active", True),
                     logo_url=b.get("logo"),
                 ))
-
             if new_banks:
                 await session.commit()
-                logger.info("Paystack banks  ✓  synced (%d new)", len(new_banks))
-            else:
-                logger.info("Paystack banks  ✓  up to date")
+                logger.info("Paystack banks  ✓  live sync added %d more", len(new_banks))
     except Exception as exc:
-        logger.error("Paystack banks  ✗  sync FAILED — %s", exc)
+        logger.warning("Paystack banks  ⚠  live sync skipped — %s", exc)
 
 
 async def check_database() -> bool:
@@ -203,6 +256,7 @@ async def run_startup_checks() -> None:
     await seed_income_sources()
     await seed_financial_goals()
     await seed_categories()
+    await sync_paystack_banks()
     db_ok = await check_database()
     redis_ok = check_redis()
 
