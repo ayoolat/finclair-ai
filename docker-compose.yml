@@ -26,6 +26,7 @@ services:
     restart: unless-stopped
 
   app:
+    build: .
     image: ghcr.io/ayoolat/finclair-ai:latest
     ports:
       - "8000:8000"
@@ -39,6 +40,7 @@ services:
     restart: unless-stopped
 
   worker:
+    build: .
     image: ghcr.io/ayoolat/finclair-ai:latest
     command: python worker.py
     env_file:
