@@ -51,4 +51,3 @@ migrations/versions/*.pyc
 logs/
 
 # Docker
-.dockerignore

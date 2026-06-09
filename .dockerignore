@@ -1,0 +1,17 @@
+.venv/
+.git/
+.github/
+__pycache__/
+*.py[cod]
+*.pyc
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+logs/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+docker-compose.override.yml
