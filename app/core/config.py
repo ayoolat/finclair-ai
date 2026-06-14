@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     openai_api_key: str
     ocr_provider: str = "openai"
 
+    # Firebase — social auth (Google & Apple)
+    firebase_credentials_json: str = ""
+
     # Digital Ocean Spaces — file storage
     storage_provider: str = "spaces"
     spaces_key: str

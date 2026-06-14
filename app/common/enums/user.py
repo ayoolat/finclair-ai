@@ -11,3 +11,9 @@ class UserGoalType(str, Enum):
 class OtpType(str, Enum):
     EMAIL_VERIFICATION = "email_verification"
     PASSCODE_RESET = "passcode_reset"
+
+
+class AuthProvider(str, Enum):
+    EMAIL = "email"
+    GOOGLE = "google"
+    APPLE = "apple"

@@ -15,6 +15,7 @@ from app.module.auth.dto.auth import (
     RegisterDto,
     ResendOtpDto,
     ResetPasscodeDto,
+    SocialAuthDto,
     TokenPairResponseDto,
     VerifyEmailDto,
 )
@@ -93,6 +94,14 @@ async def reset_passcode(dto: ResetPasscodeDto, db: AsyncSession = Depends(get_d
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message="Passcode reset successful.").model_dump())
+
+
+@router.post("/social", response_model=ApiResponse[TokenPairResponseDto])
+async def social_auth(dto: SocialAuthDto, db: AsyncSession = Depends(get_db)) -> JSONResponse:
+    result = await AuthService(db).social_auth(dto)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message="Authenticated.").model_dump())
 
 
 @router.post("/onboarding/goals", response_model=ApiResponse[dict])

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.session import Base
 from app.common.mixins.audit import AuditMixin
+from app.common.enums.user import AuthProvider
 
 if TYPE_CHECKING:
     from app.module.income.schema.income import Income
@@ -24,10 +25,12 @@ class User(AuditMixin, Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    hashed_passcode: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_passcode: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
+    auth_provider: Mapped[str] = mapped_column(String(20), nullable=False, default=AuthProvider.EMAIL)
+    firebase_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
 
     goals: Mapped[list["UserGoal"]] = relationship(
         "UserGoal",

@@ -72,3 +72,8 @@ class TokenPairResponseDto(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+
+
+class SocialAuthDto(BaseModel):
+    firebase_token: str
+    default_currency: str = "NGN"

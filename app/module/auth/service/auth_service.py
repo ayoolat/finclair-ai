@@ -3,14 +3,17 @@ Responsible for one thing: auth business flows.
 Delegates to: hasher, token, OtpService, SessionService, email queue.
 """
 
+import re
 import uuid
 from typing import Optional
 
+from firebase_admin.exceptions import FirebaseError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.email.service import enqueue_otp_email, enqueue_passcode_reset_email
-from app.common.enums.user import OtpType
+from app.common.enums.user import AuthProvider, OtpType
+from app.common.firebase import verify_firebase_token
 from app.core.config import settings
 from app.common.response import Result
 from app.common.security.hasher import hash_passcode, verify_passcode
@@ -23,6 +26,7 @@ from app.module.auth.dto.auth import (
     RegisterDto,
     ResendOtpDto,
     ResetPasscodeDto,
+    SocialAuthDto,
     TokenPairResponseDto,
     VerifyEmailDto,
 )
@@ -182,6 +186,48 @@ class AuthService:
         await self._db.commit()
         return Result.ok({"message": "Goals saved."})
 
+    async def social_auth(self, dto: SocialAuthDto) -> Result[TokenPairResponseDto]:
+        try:
+            claims = verify_firebase_token(dto.firebase_token)
+        except FirebaseError:
+            return Result.fail("Invalid or expired Firebase token.", error_code="INVALID_FIREBASE_TOKEN", status_code=401)
+
+        firebase_uid: str = claims["uid"]
+        email: str | None = claims.get("email")
+        if not email:
+            return Result.fail("Social account has no email address.", error_code="NO_EMAIL", status_code=400)
+
+        provider = AuthProvider.APPLE if any(
+            p.get("provider_id", "").startswith("apple") for p in claims.get("firebase", {}).get("identities", {}).values() if isinstance(p, list)
+        ) else AuthProvider.GOOGLE
+
+        user = await self._get_user_by_email(email)
+
+        if user is None:
+            username = await self._generate_username(email)
+            user = User(
+                email=email,
+                username=username,
+                hashed_passcode=None,
+                default_currency=dto.default_currency,
+                is_email_verified=True,
+                auth_provider=provider,
+                firebase_uid=firebase_uid,
+            )
+            self._db.add(user)
+            await self._db.flush()
+        else:
+            if not user.is_active:
+                return Result.fail("Account is inactive.", error_code="ACCOUNT_INACTIVE", status_code=403)
+            if user.firebase_uid is None:
+                user.firebase_uid = firebase_uid
+                user.auth_provider = provider
+                user.is_email_verified = True
+
+        session, raw_refresh = await self._sessions.create(user.id)
+        await self._db.commit()
+        return Result.ok(self._token_pair(user.id, session.id, raw_refresh))
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
@@ -203,3 +249,12 @@ class AuthService:
     async def _username_exists(self, username: str) -> bool:
         result = await self._db.execute(select(User.id).where(User.username == username))
         return result.first() is not None
+
+    async def _generate_username(self, email: str) -> str:
+        base = re.sub(r"[^a-z0-9]", "", email.split("@")[0].lower())[:20] or "user"
+        username = base
+        suffix = 1
+        while await self._username_exists(username):
+            username = f"{base}{suffix}"
+            suffix += 1
+        return username
