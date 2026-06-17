@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
 
     # Mono — bank account linking and transaction sync
-    mono_public_key: str
+    mono_public_key: str = ""
     mono_secret_key: str
 
     # Paystack — bank list sync
