@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # SMTP — all required, no defaults
     smtp_host: str
-    smtp_port: int = 587
+    smtp_port: int = 465
     smtp_user: str
     smtp_password: str
     smtp_from: str
@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
 
     # Mono — bank account linking and transaction sync
+    mono_public_key: str
     mono_secret_key: str
 
     # Paystack — bank list sync
