@@ -120,6 +120,51 @@ class ExpenseResponseDto(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Summary / analytics ───────────────────────────────────────────────────────
+
+class CategoryExpenseSummaryDto(BaseModel):
+    name: str
+    amount: float
+    transaction_count: int
+    pct_of_total: float
+
+
+class MonthlyTrendPointDto(BaseModel):
+    month: str   # "Jan", "Feb", …
+    year: int
+    total: Optional[float]  # None for future months with no data
+
+
+class IncomeExpenseTrendPointDto(BaseModel):
+    month: str
+    year: int
+    income: float
+    expense: float
+
+
+class ExpenseSummaryDto(BaseModel):
+    month_label: str               # "April 2024"
+    total_expense: float
+    mom_change_pct: Optional[float]   # None when no prior month data
+    mom_direction: Optional[str]      # "less" | "more" | "same"
+    categories: list[CategoryExpenseSummaryDto]
+    monthly_trend: list[MonthlyTrendPointDto]
+    income_expense_trend: list[IncomeExpenseTrendPointDto]
+    monthly_income: float
+
+
+class ExpenseSummaryQueryDto(BaseModel):
+    year: Optional[int] = None
+    month: Optional[int] = None  # 1-12
+
+    @field_validator("month")
+    @classmethod
+    def month_in_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not 1 <= v <= 12:
+            raise ValueError("Month must be between 1 and 12.")
+        return v
+
+
 class ExpenseFilterDto(PageQueryDto):
     search: Optional[str] = None
     category_id: Optional[uuid.UUID] = None

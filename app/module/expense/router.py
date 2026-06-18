@@ -9,11 +9,25 @@ from app.module.expense.dto.expense import (
     CreateManualExpenseDto,
     ExpenseFilterDto,
     ExpenseResponseDto,
+    ExpenseSummaryDto,
+    ExpenseSummaryQueryDto,
     UpdateExpenseDto,
 )
 from app.module.expense.service.expense_service import ExpenseService, get_expense_service
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
+
+@router.get("/summary", response_model=ApiResponse[ExpenseSummaryDto])
+async def expense_summary(
+    query: ExpenseSummaryQueryDto = Depends(),
+    ctx: AuthContext = Depends(get_auth_context),
+    service: ExpenseService = Depends(get_expense_service),
+) -> JSONResponse:
+    result = await service.get_summary(ctx.user_id, query.year, query.month)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 
 @router.get("", response_model=PaginatedResponse[ExpenseResponseDto])

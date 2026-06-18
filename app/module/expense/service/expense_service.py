@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+from calendar import month_abbr
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -9,21 +10,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
+from app.common.enums.income import IncomeReoccurrence
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.category.schema.category import Category
 from app.module.expense.dto.expense import (
+    CategoryExpenseSummaryDto,
     CreateManualExpenseDto,
     ExpenseFilterDto,
     ExpenseResponseDto,
+    ExpenseSummaryDto,
+    IncomeExpenseTrendPointDto,
+    MonthlyTrendPointDto,
     UpdateExpenseDto,
 )
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.expense.schema.expense_item import ExpenseItem
 from app.module.file.schema.file import File
+from app.module.income.schema.income import Income
 
 _RECEIPT_LOW_CONFIDENCE = 0.5
 
@@ -256,7 +263,135 @@ class ExpenseService:
         await self._db.commit()
         return Result.ok({"message": "Expense deleted."})
 
+    # ── Summary ───────────────────────────────────────────────────────────────
+
+    async def get_summary(
+        self,
+        user_id: uuid.UUID,
+        year: Optional[int],
+        month: Optional[int],
+    ) -> Result[ExpenseSummaryDto]:
+        today = date.today()
+        target_year = year or today.year
+        target_month = month or today.month
+
+        month_start, month_end = _month_bounds(target_year, target_month)
+
+        # ── Current month totals ──────────────────────────────────────────
+        total_expense = await self._sum_expenses(user_id, month_start, month_end)
+
+        # ── Previous month for MoM change ────────────────────────────────
+        prev_year, prev_month = (target_year, target_month - 1) if target_month > 1 else (target_year - 1, 12)
+        prev_start, prev_end = _month_bounds(prev_year, prev_month)
+        prev_expense = await self._sum_expenses(user_id, prev_start, prev_end)
+
+        if prev_expense > 0:
+            mom_change_pct = abs((total_expense - prev_expense) / prev_expense * 100)
+            mom_direction: Optional[str] = "less" if total_expense < prev_expense else ("more" if total_expense > prev_expense else "same")
+        else:
+            mom_change_pct = None
+            mom_direction = None
+
+        # ── Category breakdown ────────────────────────────────────────────
+        cat_rows = await self._db.execute(
+            select(
+                Category.name,
+                func.sum(Expense.amount).label("total"),
+                func.count(Expense.id).label("tx_count"),
+            )
+            .join(expense_categories, expense_categories.c.category_id == Category.id)
+            .join(Expense, Expense.id == expense_categories.c.expense_id)
+            .where(
+                Expense.user_id == user_id,
+                Expense.deleted_at.is_(None),
+                Expense.expense_date >= month_start,
+                Expense.expense_date <= month_end,
+            )
+            .group_by(Category.name)
+            .order_by(func.sum(Expense.amount).desc())
+        )
+        categories = [
+            CategoryExpenseSummaryDto(
+                name=row.name,
+                amount=float(row.total),
+                transaction_count=row.tx_count,
+                pct_of_total=(float(row.total) / total_expense * 100) if total_expense > 0 else 0.0,
+            )
+            for row in cat_rows.all()
+        ]
+
+        # ── 6-month trend window (3 before + current + 2 ahead) ──────────
+        trend_months = _month_window(target_year, target_month, before=3, ahead=2)
+        monthly_trend: list[MonthlyTrendPointDto] = []
+        for ty, tm in trend_months:
+            ts, te = _month_bounds(ty, tm)
+            is_future = date(ty, tm, 1) > today
+            total = None if is_future else await self._sum_expenses(user_id, ts, te)
+            monthly_trend.append(
+                MonthlyTrendPointDto(month=month_abbr[tm], year=ty, total=total)
+            )
+
+        # ── Income/expense trend ──────────────────────────────────────────
+        income_trend: list[IncomeExpenseTrendPointDto] = []
+        for ty, tm in trend_months:
+            ts, te = _month_bounds(ty, tm)
+            exp_total = 0.0 if date(ty, tm, 1) > today else await self._sum_expenses(user_id, ts, te)
+            inc_total = await self._monthly_income_for(user_id, ty, tm)
+            income_trend.append(
+                IncomeExpenseTrendPointDto(month=month_abbr[tm], year=ty, income=inc_total, expense=exp_total)
+            )
+
+        monthly_income = await self._monthly_income_for(user_id, target_year, target_month)
+
+        return Result.ok(
+            ExpenseSummaryDto(
+                month_label=f"{datetime(target_year, target_month, 1).strftime('%B')} {target_year}",
+                total_expense=total_expense,
+                mom_change_pct=mom_change_pct,
+                mom_direction=mom_direction,
+                categories=categories,
+                monthly_trend=monthly_trend,
+                income_expense_trend=income_trend,
+                monthly_income=monthly_income,
+            )
+        )
+
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    async def _sum_expenses(self, user_id: uuid.UUID, start: datetime, end: datetime) -> float:
+        row = await self._db.execute(
+            select(func.sum(Expense.amount)).where(
+                Expense.user_id == user_id,
+                Expense.deleted_at.is_(None),
+                Expense.expense_date >= start,
+                Expense.expense_date <= end,
+            )
+        )
+        return float(row.scalar_one() or 0)
+
+    async def _monthly_income_for(self, user_id: uuid.UUID, year: int, month: int) -> float:
+        month_start_d = date(year, month, 1)
+        rows = await self._db.execute(
+            select(Income.amount, Income.reoccurrence, Income.start_date, Income.end_date).where(
+                Income.user_id == user_id,
+                Income.start_date <= date(year, month, 28),  # active by end of month
+            )
+        )
+        total = 0.0
+        _multipliers = {
+            IncomeReoccurrence.DAILY: 30,
+            IncomeReoccurrence.WEEKLY: 4,
+            IncomeReoccurrence.MONTHLY: 1,
+        }
+        for amount, reoccurrence, start, end in rows.all():
+            rec = IncomeReoccurrence(reoccurrence)
+            if rec == IncomeReoccurrence.ONE_TIME:
+                if start >= month_start_d and (end is None or end <= date(year, month, 28)):
+                    total += float(amount)
+            else:
+                if end is None or end >= month_start_d:
+                    total += float(amount) * _multipliers.get(rec, 1)
+        return total
 
     async def _load(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Expense]:
         result = await self._db.execute(
@@ -283,3 +418,27 @@ class ExpenseService:
 
 def get_expense_service(db: AsyncSession = Depends(get_db)) -> ExpenseService:
     return ExpenseService(db)
+
+
+def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
+    import calendar
+    last_day = calendar.monthrange(year, month)[1]
+    return (
+        datetime(year, month, 1, 0, 0, 0),
+        datetime(year, month, last_day, 23, 59, 59),
+    )
+
+
+def _month_window(year: int, month: int, before: int, ahead: int) -> list[tuple[int, int]]:
+    result = []
+    for offset in range(-before, ahead + 1):
+        m = month + offset
+        y = year
+        while m < 1:
+            m += 12
+            y -= 1
+        while m > 12:
+            m -= 12
+            y += 1
+        result.append((y, m))
+    return result
