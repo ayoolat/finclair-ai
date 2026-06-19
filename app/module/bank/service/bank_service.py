@@ -77,6 +77,27 @@ class BankService:
         await self._db.refresh(bank)
         return Result.ok(BankResponseDto.model_validate(bank), status_code=201)
 
+    # ── Balance ───────────────────────────────────────────────────────────────
+
+    async def get_balance(self, user_id: uuid.UUID, bank_id: uuid.UUID) -> Result[dict]:
+        bank = await self._load_bank(bank_id, user_id)
+        if bank is None:
+            return Result.fail("Bank not found.", error_code="NOT_FOUND", status_code=404)
+        if bank.mono_account_id is None:
+            return Result.fail("Bank not linked to Mono.", error_code="NOT_LINKED", status_code=400)
+
+        data = await self._mono.get_balance(bank.mono_account_id)
+        if data is None:
+            return Result.fail("Failed to fetch balance.", error_code="MONO_ERROR", status_code=502)
+
+        return Result.ok({
+            "bank_id": str(bank_id),
+            "bank_name": bank.name,
+            "account_number": bank.account_number,
+            "balance": data["balance"],
+            "currency": data["currency"],
+        })
+
     # ── Sync transactions from Mono (from link time) ──────────────────────────
 
     async def sync_transactions(

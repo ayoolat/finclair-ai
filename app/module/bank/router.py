@@ -7,6 +7,8 @@ from app.common.response import ApiResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.bank.dto.bank import BankResponseDto, LinkBankDto, MonoWebhookDto
 from app.module.bank.service.bank_service import BankService, get_bank_service
+from app.module.income.dto.income import CreateIncomeDto, IncomeResponseDto
+from app.module.income.service.income_service import IncomeService, get_income_service
 
 router = APIRouter(prefix="/banks", tags=["banks"])
 
@@ -67,6 +69,32 @@ async def disconnect_bank(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+@router.get("/{bank_id}/balance", response_model=ApiResponse[dict])
+async def get_balance(
+    bank_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: BankService = Depends(get_bank_service),
+) -> JSONResponse:
+    result = await service.get_balance(ctx.user_id, bank_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+@router.post("/{bank_id}/income", response_model=ApiResponse[IncomeResponseDto])
+async def create_bank_income(
+    bank_id: uuid.UUID,
+    dto: CreateIncomeDto,
+    ctx: AuthContext = Depends(get_auth_context),
+    income_service: IncomeService = Depends(get_income_service),
+) -> JSONResponse:
+    dto.bank_id = bank_id
+    result = await income_service.create(ctx.user_id, dto)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data, message="Income recorded.").model_dump())
 
 
 @router.post("/mono/webhook", include_in_schema=False)

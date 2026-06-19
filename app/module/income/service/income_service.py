@@ -74,11 +74,39 @@ class IncomeService:
         income.reoccurrence = dto.reoccurrence.value  # type: ignore[union-attr]
         income.note = dto.note  # type: ignore[union-attr]
         income.start_date = dto.start_date  # type: ignore[union-attr]
+        income.bank_id = dto.bank_id  # type: ignore[union-attr]
         income.updated_by = user_id  # type: ignore[union-attr]
 
         await self._db.commit()
         income = await self._get_current(user_id)
         return Result.ok(self._to_dto(income), status_code=201)  # type: ignore[arg-type]
+
+    async def create(self, user_id: uuid.UUID, dto: CreateIncomeDto) -> Result[IncomeResponseDto]:
+        """Create a new income record without overwriting any existing one."""
+        source = await self._validate_source(user_id, dto.source_id)
+        if source is None:
+            return Result.fail("Invalid source.", error_code="INVALID_SOURCE", status_code=400)
+
+        income = Income(
+            user_id=user_id,
+            source_id=dto.source_id,
+            amount=dto.amount,
+            reoccurrence=dto.reoccurrence.value,
+            note=dto.note,
+            start_date=dto.start_date,
+            bank_id=dto.bank_id,
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        self._db.add(income)
+        await self._db.commit()
+        await self._db.refresh(income)
+
+        result = await self._db.execute(
+            select(Income).where(Income.id == income.id).options(joinedload(Income.source))
+        )
+        income = result.scalar_one()
+        return Result.ok(self._to_dto(income), status_code=201)
 
     async def update(self, user_id: uuid.UUID, dto: UpdateIncomeDto) -> Result[IncomeResponseDto]:
         income = await self._get_current(user_id)
@@ -115,6 +143,7 @@ class IncomeService:
             reoccurrence=income.reoccurrence,
             note=income.note,
             start_date=income.start_date,
+            bank_id=income.bank_id,
         )
 
     async def _get_current(self, user_id: uuid.UUID) -> Optional[Income]:

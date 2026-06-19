@@ -43,6 +43,25 @@ class MonoService:
             logger.error("Mono get_account failed for %s: %s", account_id, exc)
             return None
 
+    async def get_balance(self, account_id: str) -> Optional[dict]:
+        """Fetch live balance and account meta from Mono."""
+        try:
+            response = await asyncio.to_thread(
+                self._client.get,
+                f"/accounts/{account_id}",
+            )
+            response.raise_for_status()
+            data = response.json()
+            return {
+                "balance": data.get("balance"),
+                "currency": data.get("currency", "NGN"),
+                "account_number": data.get("accountNumber"),
+                "name": data.get("name"),
+            }
+        except Exception as exc:
+            logger.error("Mono get_balance failed for %s: %s", account_id, exc)
+            return None
+
     async def get_transactions(
         self, account_id: str, since: Optional[str] = None
     ) -> list[dict]:
