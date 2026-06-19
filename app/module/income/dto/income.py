@@ -61,3 +61,10 @@ class IncomeSourceDto(BaseModel):
     id: uuid.UUID
     name: str
     is_default: bool
+
+
+class IncomeCalculationDto(BaseModel):
+    monthly: float
+    annual: float
+    weekly: float
+    daily: float

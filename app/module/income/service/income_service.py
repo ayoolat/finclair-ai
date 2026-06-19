@@ -6,17 +6,27 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.common.enums.income import IncomeReoccurrence
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.income.dto.income import (
     CreateCustomSourceDto,
     CreateIncomeDto,
+    IncomeCalculationDto,
     IncomeResponseDto,
     IncomeSourceDto,
     UpdateIncomeDto,
 )
 from app.module.income.schema.income import Income
 from app.module.income.schema.income_source import IncomeSource
+
+# Monthly equivalent multipliers for each recurrence type
+_TO_MONTHLY = {
+    IncomeReoccurrence.DAILY: 30,
+    IncomeReoccurrence.WEEKLY: 4,
+    IncomeReoccurrence.MONTHLY: 1,
+    IncomeReoccurrence.ONE_TIME: 0,  # excluded from recurring calculation
+}
 
 
 class IncomeService:
@@ -52,6 +62,23 @@ class IncomeService:
         await self._db.commit()
         await self._db.refresh(source)
         return Result.ok(IncomeSourceDto(id=source.id, name=source.name, is_default=False), status_code=201)
+
+    async def calculate(self, user_id: uuid.UUID) -> Result[IncomeCalculationDto]:
+        rows = await self._db.execute(
+            select(Income.amount, Income.reoccurrence).where(Income.user_id == user_id)
+        )
+        monthly = 0.0
+        for amount, reoccurrence in rows.all():
+            rec = IncomeReoccurrence(reoccurrence)
+            multiplier = _TO_MONTHLY.get(rec, 0)
+            monthly += float(amount) * multiplier
+
+        return Result.ok(IncomeCalculationDto(
+            monthly=monthly,
+            annual=monthly * 12,
+            weekly=monthly / 4.33,
+            daily=monthly / 30,
+        ))
 
     async def get(self, user_id: uuid.UUID) -> Result[IncomeResponseDto]:
         income = await self._get_current(user_id)

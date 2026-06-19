@@ -6,6 +6,7 @@ from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.income.dto.income import (
     CreateCustomSourceDto,
     CreateIncomeDto,
+    IncomeCalculationDto,
     IncomeResponseDto,
     IncomeSourceDto,
     UpdateIncomeDto,
@@ -34,6 +35,15 @@ async def add_custom_source(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=result.status_code, content=ApiResponse.ok(data=result.data, message="Source added.").model_dump())
+
+
+@router.get("/calculate", response_model=ApiResponse[IncomeCalculationDto])
+async def calculate_income(
+    ctx: AuthContext = Depends(get_auth_context),
+    service: IncomeService = Depends(get_income_service),
+) -> JSONResponse:
+    result = await service.calculate(ctx.user_id)
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 
 @router.get("", response_model=ApiResponse[IncomeResponseDto])
