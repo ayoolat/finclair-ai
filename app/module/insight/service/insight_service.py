@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -15,6 +16,7 @@ from app.module.category.schema.category import Category
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.income.schema.income import Income
+from app.module.insight.dto.insight import AvailableBalanceDto
 from app.module.user.schema.user import User
 
 _SYSTEM_PROMPT = (
@@ -86,6 +88,36 @@ class InsightService:
 
         return Result.ok(message)
 
+    async def get_available_balance(
+        self,
+        user_id: uuid.UUID,
+        start_date: Optional[date],
+        end_date: Optional[date],
+    ) -> Result[AvailableBalanceDto]:
+        today = date.today()
+        if start_date is None:
+            start_date = date(today.year, today.month, 1)
+        if end_date is None:
+            end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+
+        if end_date < start_date:
+            return Result.fail("end_date must be on or after start_date.", error_code="INVALID_RANGE", status_code=400)
+
+        dt_start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0)
+        dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+
+        total_expenses = await self._month_total(user_id, dt_start, dt_end)
+        total_income = await self._income_for_range(user_id, start_date, end_date)
+        available = max(0.0, total_income - total_expenses)
+
+        return Result.ok(AvailableBalanceDto(
+            start_date=start_date,
+            end_date=end_date,
+            total_income=total_income,
+            total_expenses=total_expenses,
+            available_balance=available,
+        ))
+
     async def _month_total(
         self, user_id: uuid.UUID, start: datetime, end: datetime
     ) -> float:
@@ -117,6 +149,31 @@ class InsightService:
             .limit(3)
         )
         return [(row.name, float(row.total)) for row in rows.all()]
+
+    async def _income_for_range(self, user_id: uuid.UUID, start: date, end: date) -> float:
+        rows = await self._db.execute(
+            select(Income.amount, Income.reoccurrence, Income.start_date, Income.end_date).where(
+                Income.user_id == user_id,
+                Income.start_date <= end,
+            )
+        )
+        total_days = (end - start).days + 1
+        total = 0.0
+        for amount, reoccurrence, inc_start, inc_end in rows.all():
+            if inc_end is not None and inc_end < start:
+                continue
+            rec = IncomeReoccurrence(reoccurrence)
+            amt = float(amount)
+            if rec == IncomeReoccurrence.ONE_TIME:
+                if start <= inc_start <= end:
+                    total += amt
+            elif rec == IncomeReoccurrence.DAILY:
+                total += amt * total_days
+            elif rec == IncomeReoccurrence.WEEKLY:
+                total += amt * (total_days / 7)
+            elif rec == IncomeReoccurrence.MONTHLY:
+                total += amt * (total_days / 30)
+        return total
 
     async def _monthly_income(self, user_id: uuid.UUID, today: date) -> float:
         month_start = date(today.year, today.month, 1)
