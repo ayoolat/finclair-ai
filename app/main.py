@@ -11,6 +11,7 @@ from app.core.scheduler import schedule_daily
 from app.core.startup import check_database, check_redis, run_startup_checks, sync_paystack_banks
 from app.module.auth.router import router as auth_router
 from app.module.bank.router import router as bank_router
+from app.module.budget.router import router as budget_router
 from app.module.insight.router import router as insight_router
 from app.module.category.router import router as category_router
 from app.module.email.router import router as email_router
@@ -55,6 +56,7 @@ app.include_router(goal_router, prefix="/api/v1")
 app.include_router(category_router, prefix="/api/v1")
 app.include_router(expense_router, prefix="/api/v1")
 app.include_router(bank_router, prefix="/api/v1")
+app.include_router(budget_router, prefix="/api/v1")
 app.include_router(insight_router, prefix="/api/v1")
 
 

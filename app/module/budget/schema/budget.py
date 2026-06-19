@@ -11,6 +11,7 @@ from app.common.mixins.audit import AuditMixin
 
 if TYPE_CHECKING:
     from app.module.user.schema.user import User
+    from app.module.budget.schema.budget_allocation import BudgetAllocation
 
 
 class Budget(AuditMixin, Base):
@@ -42,4 +43,9 @@ class Budget(AuditMixin, Base):
         "User",
         back_populates="budgets",
         foreign_keys=[user_id],
+    )
+    allocations: Mapped[list["BudgetAllocation"]] = relationship(
+        "BudgetAllocation",
+        back_populates="budget",
+        cascade="all, delete-orphan",
     )
