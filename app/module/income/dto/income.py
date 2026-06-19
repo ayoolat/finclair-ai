@@ -14,7 +14,6 @@ class CreateIncomeDto(BaseModel):
     reoccurrence: IncomeReoccurrence
     note: Optional[str] = None
     start_date: date
-    bank_id: Optional[uuid.UUID] = None
 
     @field_validator("amount")
     @classmethod
@@ -40,7 +39,6 @@ class IncomeResponseDto(BaseModel):
     reoccurrence: str
     note: Optional[str]
     start_date: date
-    bank_id: Optional[uuid.UUID] = None
 
     model_config = {"from_attributes": True}
 
