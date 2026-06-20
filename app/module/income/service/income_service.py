@@ -15,6 +15,7 @@ from app.module.income.dto.income import (
     IncomeCalculationDto,
     IncomeResponseDto,
     IncomeSourceDto,
+    UpdateIncomeAmountDto,
     UpdateIncomeDto,
 )
 from app.module.income.schema.income import Income
@@ -107,11 +108,33 @@ class IncomeService:
         income = await self._get_current(user_id)
         return Result.ok(self._to_dto(income), status_code=201)  # type: ignore[arg-type]
 
+    async def update_by_id(
+        self, user_id: uuid.UUID, income_id: uuid.UUID, dto: UpdateIncomeAmountDto
+    ) -> Result[IncomeResponseDto]:
+        result = await self._db.execute(
+            select(Income)
+            .where(Income.id == income_id, Income.user_id == user_id)
+            .options(joinedload(Income.source))
+        )
+        income = result.scalar_one_or_none()
+        if income is None:
+            return Result.fail("Income not found.", error_code="NOT_FOUND", status_code=404)
+
+        income.amount = dto.amount
+        income.updated_by = user_id
+        await self._db.commit()
+        await self._db.refresh(income)
+        return Result.ok(self._to_dto(income))
+
     async def update(self, user_id: uuid.UUID, dto: UpdateIncomeDto) -> Result[IncomeResponseDto]:
         income = await self._get_current(user_id)
         if income is None:
             return Result.fail("No income set up yet.", error_code="NOT_FOUND", status_code=404)
+        return await self._apply_update(user_id, income, dto)
 
+    async def _apply_update(
+        self, user_id: uuid.UUID, income: Income, dto: UpdateIncomeDto
+    ) -> Result[IncomeResponseDto]:
         if dto.source_id is not None:
             source = await self._validate_source(user_id, dto.source_id)
             if source is None:
@@ -128,8 +151,8 @@ class IncomeService:
         income.updated_by = user_id
 
         await self._db.commit()
-        income = await self._get_current(user_id)
-        return Result.ok(self._to_dto(income))  # type: ignore[arg-type]
+        await self._db.refresh(income)
+        return Result.ok(self._to_dto(income))
 
     # ------------------------------------------------------------------
 

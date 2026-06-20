@@ -16,7 +16,7 @@ from app.module.category.schema.category import Category
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.income.schema.income import Income
-from app.module.insight.dto.insight import AvailableBalanceDto
+from app.module.insight.dto.insight import HomeInsightDto
 from app.module.user.schema.user import User
 
 _SYSTEM_PROMPT = (
@@ -46,25 +46,40 @@ class InsightService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def home_insight(self, user_id: uuid.UUID) -> Result[str]:
+    async def home_insight(
+        self,
+        user_id: uuid.UUID,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> Result[HomeInsightDto]:
         user_row = await self._db.execute(select(User).where(User.id == user_id))
         user = user_row.scalar_one_or_none()
         if user is None:
             return Result.fail("User not found.", error_code="NOT_FOUND", status_code=404)
 
         today = date.today()
-        month_start = datetime(today.year, today.month, 1)
-        month_end = datetime(today.year, today.month, today.day, 23, 59, 59)
+        if start_date is None:
+            start_date = date(today.year, today.month, 1)
+        if end_date is None:
+            end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
 
-        total_spent = await self._month_total(user_id, month_start, month_end)
-        top_categories = await self._top_categories(user_id, month_start, month_end)
-        monthly_income = await self._monthly_income(user_id, today)
+        if end_date < start_date:
+            return Result.fail("end_date must be on or after start_date.", error_code="INVALID_RANGE", status_code=400)
+
+        dt_start = datetime(start_date.year, start_date.month, start_date.day)
+        dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+
+        total_spent, top_categories, total_income = await asyncio.gather(
+            self._month_total(user_id, dt_start, dt_end),
+            self._top_categories(user_id, dt_start, dt_end),
+            self._income_for_range(user_id, start_date, end_date),
+        )
 
         user_prompt = _build_prompt(
             username=user.username,
-            month=today.strftime("%B"),
+            month=start_date.strftime("%B %Y"),
             total_spent=total_spent,
-            monthly_income=monthly_income,
+            monthly_income=total_income,
             top_categories=top_categories,
             currency=user.default_currency,
         )
@@ -86,36 +101,13 @@ class InsightService:
         except Exception as exc:
             return Result.fail(str(exc), error_code="AI_ERROR", status_code=502)
 
-        return Result.ok(message)
-
-    async def get_available_balance(
-        self,
-        user_id: uuid.UUID,
-        start_date: Optional[date],
-        end_date: Optional[date],
-    ) -> Result[AvailableBalanceDto]:
-        today = date.today()
-        if start_date is None:
-            start_date = date(today.year, today.month, 1)
-        if end_date is None:
-            end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
-
-        if end_date < start_date:
-            return Result.fail("end_date must be on or after start_date.", error_code="INVALID_RANGE", status_code=400)
-
-        dt_start = datetime(start_date.year, start_date.month, start_date.day, 0, 0, 0)
-        dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
-
-        total_expenses = await self._month_total(user_id, dt_start, dt_end)
-        total_income = await self._income_for_range(user_id, start_date, end_date)
-        available = max(0.0, total_income - total_expenses)
-
-        return Result.ok(AvailableBalanceDto(
+        return Result.ok(HomeInsightDto(
+            insight=message,
             start_date=start_date,
             end_date=end_date,
             total_income=total_income,
-            total_expenses=total_expenses,
-            available_balance=available,
+            total_expenses=total_spent,
+            available_balance=max(0.0, total_income - total_spent),
         ))
 
     async def _month_total(
@@ -204,7 +196,7 @@ def _build_prompt(
     currency: str,
 ) -> str:
     symbol = "₦" if currency == "NGN" else currency
-    pct: Optional[float] = (total_spent / monthly_income * 100) if monthly_income > 0 else None
+    pct = (total_spent / monthly_income * 100) if monthly_income > 0 else None
 
     lines = [
         f"User: {username}",

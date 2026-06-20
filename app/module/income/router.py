@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
@@ -9,6 +11,7 @@ from app.module.income.dto.income import (
     IncomeCalculationDto,
     IncomeResponseDto,
     IncomeSourceDto,
+    UpdateIncomeAmountDto,
     UpdateIncomeDto,
 )
 from app.module.income.service.income_service import IncomeService, get_income_service
@@ -74,6 +77,19 @@ async def update_income(
     service: IncomeService = Depends(get_income_service),
 ) -> JSONResponse:
     result = await service.update(ctx.user_id, dto)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+@router.patch("/{income_id}", response_model=ApiResponse[IncomeResponseDto])
+async def update_income_by_id(
+    income_id: uuid.UUID,
+    dto: UpdateIncomeAmountDto,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: IncomeService = Depends(get_income_service),
+) -> JSONResponse:
+    result = await service.update_by_id(ctx.user_id, income_id, dto)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())

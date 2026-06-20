@@ -2,7 +2,8 @@ from datetime import date
 from pydantic import BaseModel
 
 
-class AvailableBalanceDto(BaseModel):
+class HomeInsightDto(BaseModel):
+    insight: str
     start_date: date
     end_date: date
     total_income: float

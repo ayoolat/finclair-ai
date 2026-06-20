@@ -31,6 +31,17 @@ class UpdateIncomeDto(BaseModel):
     start_date: Optional[date] = None
 
 
+class UpdateIncomeAmountDto(BaseModel):
+    amount: Decimal
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("Amount must be greater than zero.")
+        return v
+
+
 class IncomeResponseDto(BaseModel):
     id: uuid.UUID
     amount: Decimal
