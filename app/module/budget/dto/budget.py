@@ -9,10 +9,7 @@ from pydantic import BaseModel, field_validator
 # ── Request DTOs ──────────────────────────────────────────────────────────────
 
 class CreateBudgetDto(BaseModel):
-    name: str
     amount_allocated: Decimal
-    start_date: date
-    end_date: date
 
     @field_validator("amount_allocated")
     @classmethod
@@ -21,21 +18,9 @@ class CreateBudgetDto(BaseModel):
             raise ValueError("Amount must be greater than zero.")
         return v
 
-    @field_validator("end_date", mode="after")
-    @classmethod
-    def end_after_start(cls, v: date, info: object) -> date:
-        data = getattr(info, "data", {})
-        start = data.get("start_date")
-        if start and v < start:
-            raise ValueError("end_date must be on or after start_date.")
-        return v
-
 
 class UpdateBudgetDto(BaseModel):
-    name: Optional[str] = None
     amount_allocated: Optional[Decimal] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
 
     @field_validator("amount_allocated")
     @classmethod
@@ -63,6 +48,7 @@ class AllocationResponseDto(BaseModel):
     id: uuid.UUID
     category_id: uuid.UUID
     category_name: str
+    category_icon: Optional[str]
     amount_allocated: float
     spent: float
     remaining: float
@@ -71,7 +57,6 @@ class AllocationResponseDto(BaseModel):
 
 class BudgetResponseDto(BaseModel):
     id: uuid.UUID
-    name: str
     amount_allocated: float
     spent: float
     remaining: float

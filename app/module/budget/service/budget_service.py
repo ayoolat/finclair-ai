@@ -1,10 +1,12 @@
 import uuid
-from datetime import datetime
+import calendar
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -52,19 +54,41 @@ class BudgetService:
     # ── Create ────────────────────────────────────────────────────────────────
 
     async def create(self, user_id: uuid.UUID, dto: CreateBudgetDto) -> Result[BudgetResponseDto]:
+        today = date.today()
+        start_date = today.replace(day=1)
+        last_day = calendar.monthrange(today.year, today.month)[1]
+        end_date = today.replace(day=last_day)
+
+        existing = await self._db.execute(
+            select(Budget).where(Budget.user_id == user_id, Budget.start_date == start_date)
+        )
+        if existing.scalar_one_or_none() is not None:
+            return Result.fail(
+                "A budget for this month already exists.",
+                error_code="CONFLICT",
+                status_code=409,
+            )
+
         budget = Budget(
             user_id=user_id,
-            name=dto.name,
             amount_allocated=dto.amount_allocated,
             spent=Decimal("0"),
             remaining=dto.amount_allocated,
-            start_date=dto.start_date,
-            end_date=dto.end_date,
+            start_date=start_date,
+            end_date=end_date,
             created_by=user_id,
             updated_by=user_id,
         )
         self._db.add(budget)
-        await self._db.commit()
+        try:
+            await self._db.commit()
+        except IntegrityError:
+            await self._db.rollback()
+            return Result.fail(
+                "A budget for this month already exists.",
+                error_code="CONFLICT",
+                status_code=409,
+            )
         self._db.expire_all()
         budget = await self._load(budget.id, user_id)  # type: ignore[assignment]
         return Result.ok(await self._to_dto(budget, user_id), status_code=201)  # type: ignore[arg-type]
@@ -78,17 +102,11 @@ class BudgetService:
         if budget is None:
             return Result.fail("Budget not found.", error_code="NOT_FOUND", status_code=404)
 
-        if dto.name is not None:
-            budget.name = dto.name
         if dto.amount_allocated is not None:
             budget.amount_allocated = dto.amount_allocated
             spent = await self._compute_budget_spent(user_id, budget)
             budget.spent = Decimal(str(spent))
             budget.remaining = dto.amount_allocated - Decimal(str(spent))
-        if dto.start_date is not None:
-            budget.start_date = dto.start_date
-        if dto.end_date is not None:
-            budget.end_date = dto.end_date
         budget.updated_by = user_id
 
         await self._db.commit()
@@ -117,6 +135,8 @@ class BudgetService:
 
         category = await self._db.get(Category, dto.category_id)
         if category is None:
+            return Result.fail("Category not found.", error_code="NOT_FOUND", status_code=404)
+        if category.user_id is not None and category.user_id != user_id:
             return Result.fail("Category not found.", error_code="NOT_FOUND", status_code=404)
 
         existing = await self._db.execute(
@@ -225,6 +245,7 @@ class BudgetService:
                     id=alloc.id,
                     category_id=alloc.category_id,
                     category_name=alloc.category.name,
+                    category_icon=alloc.category.icon,
                     amount_allocated=cat_allocated,
                     spent=cat_spent,
                     remaining=cat_remaining,
@@ -234,7 +255,6 @@ class BudgetService:
 
         return BudgetResponseDto(
             id=budget.id,
-            name=budget.name,
             amount_allocated=allocated,
             spent=spent,
             remaining=remaining,

@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, Date, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,7 @@ class Budget(AuditMixin, Base):
         CheckConstraint("amount_allocated >= 0", name="ck_budgets_allocated_non_negative"),
         CheckConstraint("spent >= 0", name="ck_budgets_spent_non_negative"),
         CheckConstraint("end_date >= start_date", name="ck_budgets_end_after_start"),
+        UniqueConstraint("user_id", "start_date", name="uq_budgets_user_month"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -32,7 +33,6 @@ class Budget(AuditMixin, Base):
         ForeignKey("users.id"),
         nullable=False,
     )
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
     amount_allocated: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False)
     spent: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
     remaining: Mapped[float] = mapped_column(Numeric(15, 2), nullable=False, default=0)
