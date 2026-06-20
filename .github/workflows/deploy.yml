@@ -42,6 +42,7 @@ jobs:
             cd /var/www/finclarai
             git pull origin main
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker system prune -af --volumes
             docker compose pull
             docker compose up -d --remove-orphans
             docker compose exec -T app alembic upgrade head
