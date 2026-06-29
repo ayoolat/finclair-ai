@@ -109,6 +109,7 @@ class ExpenseResponseDto(BaseModel):
     file: Optional[_FileDto] = None
     categories: list[CategorySummaryDto]
     items: list[ExpenseItemResponseDto]
+    clara_insight: Optional[str] = None
 
     @computed_field  # type: ignore[misc]
     @property

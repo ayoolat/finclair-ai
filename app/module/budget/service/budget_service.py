@@ -24,11 +24,13 @@ from app.module.budget.schema.budget_allocation import BudgetAllocation
 from app.module.category.schema.category import Category
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
+from app.module.insight.service.clara_service import ClaraService, get_clara_service
 
 
 class BudgetService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, clara: ClaraService) -> None:
         self._db = db
+        self._clara = clara
 
     # ── List ──────────────────────────────────────────────────────────────────
 
@@ -123,6 +125,14 @@ class BudgetService:
         await self._db.delete(budget)
         await self._db.commit()
         return Result.ok({"message": "Budget deleted."})
+
+    # ── Insight ───────────────────────────────────────────────────────────────
+
+    async def get_insight(self, user_id: uuid.UUID, budget_id: uuid.UUID) -> Result[str]:
+        result = await self.get(user_id, budget_id)
+        if result.is_err:
+            return Result.fail(result.error, error_code="NOT_FOUND", status_code=result.status_code)
+        return Result.ok(result.data.clara_insight)
 
     # ── Allocations ───────────────────────────────────────────────────────────
 
@@ -253,6 +263,14 @@ class BudgetService:
                 )
             )
 
+        insight = self._clara.budget_insight(
+            allocated=allocated,
+            spent=spent,
+            pct_used=pct_used,
+            remaining=remaining,
+            allocations=allocation_dtos,
+        )
+
         return BudgetResponseDto(
             id=budget.id,
             amount_allocated=allocated,
@@ -262,8 +280,14 @@ class BudgetService:
             start_date=budget.start_date,
             end_date=budget.end_date,
             allocations=allocation_dtos,
+            clara_insight=insight,
         )
 
 
-def get_budget_service(db: AsyncSession = Depends(get_db)) -> BudgetService:
-    return BudgetService(db)
+def get_budget_service(
+    db: AsyncSession = Depends(get_db),
+    clara: ClaraService = Depends(get_clara_service),
+) -> BudgetService:
+    return BudgetService(db, clara)
+
+

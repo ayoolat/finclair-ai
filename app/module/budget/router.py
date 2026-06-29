@@ -75,6 +75,18 @@ async def delete_budget(
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 
+@router.get("/{budget_id}/insight", response_model=ApiResponse[str])
+async def get_budget_insight(
+    budget_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: BudgetService = Depends(get_budget_service),
+) -> JSONResponse:
+    result = await service.get_insight(ctx.user_id, budget_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
 @router.put("/{budget_id}/allocations", response_model=ApiResponse[BudgetResponseDto])
 async def upsert_allocation(
     budget_id: uuid.UUID,

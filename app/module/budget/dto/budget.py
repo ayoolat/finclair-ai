@@ -64,3 +64,4 @@ class BudgetResponseDto(BaseModel):
     start_date: date
     end_date: date
     allocations: list[AllocationResponseDto]
+    clara_insight: str = ""

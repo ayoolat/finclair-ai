@@ -31,13 +31,15 @@ from app.module.expense.schema.expense_category import expense_categories
 from app.module.expense.schema.expense_item import ExpenseItem
 from app.module.file.schema.file import File
 from app.module.income.schema.income import Income
+from app.module.insight.service.clara_service import ClaraService, get_clara_service
 
 _RECEIPT_LOW_CONFIDENCE = 0.5
 
 
 class ExpenseService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, clara: ClaraService) -> None:
         self._db = db
+        self._clara = clara
         self._storage = get_storage_provider()
         self._ocr = get_ocr_provider()
 
@@ -149,7 +151,9 @@ class ExpenseService:
 
         await self._db.commit()
         expense = await self._load(expense.id, user_id)  # type: ignore[assignment]
-        return Result.ok(ExpenseResponseDto.model_validate(expense), status_code=201)  # type: ignore[arg-type]
+        dto = ExpenseResponseDto.model_validate(expense)
+        dto.clara_insight = await self._clara.post_expense_insight(user_id, expense)  # type: ignore[union-attr]
+        return Result.ok(dto, status_code=201)
 
     # ── Create from receipt (OCR) ─────────────────────────────────────────────
 
@@ -416,8 +420,11 @@ class ExpenseService:
         return list(result.scalars().all())
 
 
-def get_expense_service(db: AsyncSession = Depends(get_db)) -> ExpenseService:
-    return ExpenseService(db)
+def get_expense_service(
+    db: AsyncSession = Depends(get_db),
+    clara: ClaraService = Depends(get_clara_service),
+) -> ExpenseService:
+    return ExpenseService(db, clara)
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
