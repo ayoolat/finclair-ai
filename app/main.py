@@ -16,8 +16,11 @@ from app.module.insight.router import router as insight_router
 from app.module.category.router import router as category_router
 from app.module.email.router import router as email_router
 from app.module.expense.router import router as expense_router
+from app.module.friends.router import router as friends_router
 from app.module.goal.router import router as goal_router
+from app.module.groups.router import router as groups_router
 from app.module.income.router import router as income_router
+from app.module.marketing.router import router as marketing_router
 from app.module.user.router import router as user_router
 
 configure_logging(debug=settings.debug)
@@ -58,6 +61,9 @@ app.include_router(expense_router, prefix="/api/v1")
 app.include_router(bank_router, prefix="/api/v1")
 app.include_router(budget_router, prefix="/api/v1")
 app.include_router(insight_router, prefix="/api/v1")
+app.include_router(friends_router, prefix="/api/v1")
+app.include_router(groups_router, prefix="/api/v1")
+app.include_router(marketing_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])

@@ -18,7 +18,9 @@ async def run_migrations() -> None:
         alembic_cfg.attributes["connection"] = connection
         command.upgrade(alembic_cfg, "head")
 
-    engine = create_async_engine(settings.database_url)
+    from app.database.session import _prepare_url
+    db_url, connect_args = _prepare_url(settings.database_url)
+    engine = create_async_engine(db_url, connect_args=connect_args)
     try:
         async with engine.connect() as conn:
             await conn.run_sync(_upgrade)

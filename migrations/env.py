@@ -20,6 +20,13 @@ from app.module.budget.schema.budget import Budget  # noqa: F401
 from app.module.auth.schema.otp_token import OtpToken  # noqa: F401
 from app.module.auth.schema.session import Session  # noqa: F401
 from app.module.income.schema.income_source import IncomeSource  # noqa: F401
+from app.module.friends.schema.friendship import Friendship  # noqa: F401
+from app.module.groups.schema.group import Group  # noqa: F401
+from app.module.groups.schema.group_member import GroupMember  # noqa: F401
+from app.module.groups.schema.group_savings_entry import GroupSavingsEntry  # noqa: F401
+from app.module.groups.schema.group_message import GroupMessage  # noqa: F401
+from app.module.marketing.schema.newsletter import NewsletterSubscriber  # noqa: F401
+from app.module.marketing.schema.waitlist import WaitlistEntry  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -46,7 +53,9 @@ def do_run_migrations(connection: object) -> None:
 
 
 async def run_async_migrations() -> None:
-    engine = create_async_engine(settings.database_url)
+    from app.database.session import _prepare_url
+    db_url, connect_args = _prepare_url(settings.database_url)
+    engine = create_async_engine(db_url, connect_args=connect_args)
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await engine.dispose()

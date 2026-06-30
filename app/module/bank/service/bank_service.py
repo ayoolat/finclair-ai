@@ -46,10 +46,10 @@ class BankService:
     # ── Link bank via Mono ────────────────────────────────────────────────────
 
     async def link_bank(self, user_id: uuid.UUID, dto: LinkBankDto) -> Result[BankResponseDto]:
-        account_id = await self._mono.exchange_code(dto.code)
+        account_id, mono_error = await self._mono.exchange_code(dto.code)
         if account_id is None:
             return Result.fail(
-                "Failed to link bank account. Invalid or expired code.",
+                mono_error or "Failed to link bank account. Invalid or expired code.",
                 error_code="MONO_LINK_FAILED",
                 status_code=400,
             )
