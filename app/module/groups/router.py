@@ -2,10 +2,13 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from jose import JWTError
 
 from app.common.response import ApiResponse
+from app.common.security.token import decode_token
+from app.database.session import AsyncSessionLocal
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.groups.dto.group import (
     CreateGroupDto,
@@ -23,6 +26,7 @@ from app.module.groups.service.group_chat_service import GroupChatService, get_g
 from app.module.groups.service.group_member_service import GroupMemberService, get_group_member_service
 from app.module.groups.service.group_savings_service import GroupSavingsService, get_group_savings_service
 from app.module.groups.service.group_service import GroupService, get_group_service
+from app.module.groups.ws.connection_manager import ws_manager
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -212,3 +216,52 @@ async def send_attachment(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+# ── WebSocket Chat ────────────────────────────────────────────────────────────
+
+@router.websocket("/{group_id}/ws")
+async def group_chat_ws(
+    group_id: uuid.UUID,
+    websocket: WebSocket,
+    token: str = Query(default=""),
+) -> None:
+    # Authenticate via token query param (WS upgrade doesn't support Authorization header)
+    try:
+        user_id, _ = decode_token(token)
+    except (JWTError, ValueError, KeyError):
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+
+    # Verify group membership before accepting the connection
+    async with AsyncSessionLocal() as db:
+        svc = GroupChatService(db)
+        if not await svc._is_member(user_id, group_id):
+            await websocket.close(code=4003, reason="Not a group member")
+            return
+
+    await ws_manager.connect(group_id, user_id, websocket)
+    await websocket.send_json({"type": "connected", "group_id": str(group_id)})
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            content = (data.get("content") or "").strip()
+            if not content:
+                continue
+
+            async with AsyncSessionLocal() as db:
+                svc = GroupChatService(db)
+                result = await svc.send_text(user_id, group_id, SendMessageDto(content=content))
+
+            if result.is_err:
+                await websocket.send_json({"type": "error", "message": result.error})
+                continue
+
+            await ws_manager.broadcast(group_id, {
+                "type": "message",
+                "data": result.data.model_dump(mode="json"),
+            })
+
+    except WebSocketDisconnect:
+        ws_manager.disconnect(group_id, user_id)
