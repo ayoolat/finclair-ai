@@ -201,6 +201,10 @@ async def send_message(
     result = await service.send_text(ctx.user_id, group_id, dto)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    await ws_manager.broadcast(group_id, {
+        "type": "message",
+        "data": result.data.model_dump(mode="json"),
+    })
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data).model_dump())
 
 
@@ -215,6 +219,10 @@ async def send_attachment(
     result = await service.send_attachment(ctx.user_id, group_id, file, record_amount)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    await ws_manager.broadcast(group_id, {
+        "type": "message",
+        "data": result.data.model_dump(mode="json"),
+    })
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data).model_dump())
 
 
