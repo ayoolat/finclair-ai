@@ -4,11 +4,12 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.bank.dto.bank import BankResponseDto, LinkBankDto
 from app.module.bank.schema.bank import Bank
@@ -24,24 +25,32 @@ class BankService:
 
     # ── List user banks ───────────────────────────────────────────────────────
 
-    async def list_banks(self, user_id: uuid.UUID) -> Result[list[BankResponseDto]]:
-        rows = await self._db.execute(
-            select(Bank).where(Bank.user_id == user_id, Bank.deleted_at.is_(None))
-        )
-        return Result.ok([BankResponseDto.model_validate(b) for b in rows.scalars().all()])
+    async def list_banks(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[BankResponseDto]]:
+        base = select(Bank).where(Bank.user_id == user_id, Bank.deleted_at.is_(None))
+
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
+        rows = await self._db.execute(base.offset(filters.offset).limit(filters.page_size))
+        banks = [BankResponseDto.model_validate(b) for b in rows.scalars().all()]
+        return Result.ok(PaginatedResponse.ok(data=banks, page=filters.page, page_size=filters.page_size, total=total))
 
     # ── List available Paystack banks ─────────────────────────────────────────
 
-    async def list_available_banks(self) -> Result[list[dict]]:
+    async def list_available_banks(self, filters: PageQueryDto) -> Result[PaginatedResponse[dict]]:
+        base = select(PaystackBank).where(PaystackBank.is_active == True)  # noqa: E712
+
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         rows = await self._db.execute(
-            select(PaystackBank).where(PaystackBank.is_active == True)  # noqa: E712
-            .order_by(PaystackBank.name)
+            base.order_by(PaystackBank.name).offset(filters.offset).limit(filters.page_size)
         )
         banks = [
             {"id": str(b.id), "name": b.name, "code": b.code, "logo_url": b.logo_url}
             for b in rows.scalars().all()
         ]
-        return Result.ok(banks)
+        return Result.ok(PaginatedResponse.ok(data=banks, page=filters.page, page_size=filters.page_size, total=total))
 
     # ── Link bank via Mono ────────────────────────────────────────────────────
 

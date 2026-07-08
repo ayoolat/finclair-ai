@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupMemberStatus
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.groups.dto.group import RecordSavingsDto, SavingsEntryResponseDto
@@ -61,18 +62,22 @@ class GroupSavingsService:
         return Result.ok(SavingsEntryResponseDto.model_validate(entry), status_code=201)
 
     async def list_savings(
-        self, user_id: uuid.UUID, group_id: uuid.UUID
-    ) -> Result[list[SavingsEntryResponseDto]]:
+        self, user_id: uuid.UUID, group_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[SavingsEntryResponseDto]]:
         if not await self._member_or_fail(user_id, group_id):
             return Result.fail("You are not a member of this group.", status_code=403)
 
+        base = select(GroupSavingsEntry).where(GroupSavingsEntry.group_id == group_id)
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
-            select(GroupSavingsEntry)
-            .where(GroupSavingsEntry.group_id == group_id)
-            .order_by(GroupSavingsEntry.recorded_at.desc())
+            base.order_by(GroupSavingsEntry.recorded_at.desc())
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         entries = result.scalars().all()
-        return Result.ok([SavingsEntryResponseDto.model_validate(e) for e in entries])
+        dtos = [SavingsEntryResponseDto.model_validate(e) for e in entries]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def _member_or_fail(self, user_id: uuid.UUID, group_id: uuid.UUID) -> Optional[GroupMember]:
         return await self._db.scalar(

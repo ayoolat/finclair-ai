@@ -10,7 +10,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.common.response import Result
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.budget.dto.budget import (
     AllocationResponseDto,
@@ -34,16 +35,21 @@ class BudgetService:
 
     # ── List ──────────────────────────────────────────────────────────────────
 
-    async def list_budgets(self, user_id: uuid.UUID) -> Result[list[BudgetResponseDto]]:
+    async def list_budgets(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[BudgetResponseDto]]:
+        base = select(Budget).where(Budget.user_id == user_id)
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         rows = await self._db.execute(
-            select(Budget)
-            .where(Budget.user_id == user_id)
-            .options(selectinload(Budget.allocations).selectinload(BudgetAllocation.category))
+            base.options(selectinload(Budget.allocations).selectinload(BudgetAllocation.category))
             .order_by(Budget.start_date.desc())
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         budgets = rows.scalars().all()
-        result = [await self._to_dto(b, user_id) for b in budgets]
-        return Result.ok(result)
+        dtos = [await self._to_dto(b, user_id) for b in budgets]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     # ── Get ───────────────────────────────────────────────────────────────────
 

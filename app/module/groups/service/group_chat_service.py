@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupMemberStatus, MessageRole, MessageType
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.groups.dto.group import MessageResponseDto, SendMessageDto
@@ -39,22 +40,23 @@ class GroupChatService:
         self._storage = get_storage_provider()
 
     async def list_messages(
-        self, user_id: uuid.UUID, group_id: uuid.UUID, page: int = 1, limit: int = 50
-    ) -> Result[list[MessageResponseDto]]:
+        self, user_id: uuid.UUID, group_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[MessageResponseDto]]:
         if not await self._is_member(user_id, group_id):
             return Result.fail("You are not a member of this group.", status_code=403)
 
-        offset = (page - 1) * limit
+        base = select(GroupMessage).where(GroupMessage.group_id == group_id, GroupMessage.deleted_at.is_(None))
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
-            select(GroupMessage)
-            .where(GroupMessage.group_id == group_id, GroupMessage.deleted_at.is_(None))
-            .order_by(GroupMessage.sent_at.asc())
-            .offset(offset)
-            .limit(limit)
+            base.order_by(GroupMessage.sent_at.asc())
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         messages = result.scalars().all()
         user_map = await self._load_senders(messages)
-        return Result.ok([_build_message_dto(m, user_map) for m in messages])
+        dtos = [_build_message_dto(m, user_map) for m in messages]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def send_text(
         self, user_id: uuid.UUID, group_id: uuid.UUID, dto: SendMessageDto

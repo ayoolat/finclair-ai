@@ -8,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupMemberStatus
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.groups.dto.group import CreateGroupDto, GroupDetailResponseDto, GroupResponseDto, UpdateGroupDto
 from app.module.groups.schema.group import Group
@@ -25,17 +26,28 @@ class GroupService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def list_groups(self, user_id: uuid.UUID) -> Result[list[GroupResponseDto]]:
+    async def list_groups(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[GroupResponseDto]]:
+        base = (
+            select(Group.id)
+            .join(GroupMember, GroupMember.group_id == Group.id)
+            .where(GroupMember.user_id == user_id, GroupMember.left_at.is_(None))
+        )
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
             select(Group)
             .options(selectinload(Group.members))
             .join(GroupMember, GroupMember.group_id == Group.id)
             .where(GroupMember.user_id == user_id, GroupMember.left_at.is_(None))
             .order_by(Group.created_at.desc())
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         groups = result.scalars().unique().all()
         dtos = [group_to_dto(g, [m for m in g.members if m.left_at is None]) for g in groups]
-        return Result.ok(dtos)
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def create_group(self, user_id: uuid.UUID, dto: CreateGroupDto) -> Result[GroupDetailResponseDto]:
         count = await self._db.scalar(

@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from app.common.response import ApiResponse
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.budget.dto.budget import (
     BudgetResponseDto,
@@ -17,13 +18,14 @@ from app.module.budget.service.budget_service import BudgetService, get_budget_s
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
 
-@router.get("", response_model=ApiResponse[list[BudgetResponseDto]])
+@router.get("", response_model=PaginatedResponse[BudgetResponseDto])
 async def list_budgets(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: BudgetService = Depends(get_budget_service),
 ) -> JSONResponse:
-    result = await service.list_budgets(ctx.user_id)
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    result = await service.list_budgets(ctx.user_id, filters)
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.get("/{budget_id}", response_model=ApiResponse[BudgetResponseDto])

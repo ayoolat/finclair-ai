@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
-from app.common.response import ApiResponse
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.friends.dto.friend import FriendshipResponseDto, SendInviteDto, UserSearchResultDto
 from app.module.friends.service.friend_service import FriendService, get_friend_service
@@ -11,27 +12,29 @@ from app.module.friends.service.friend_service import FriendService, get_friend_
 router = APIRouter(prefix="/friends", tags=["friends"])
 
 
-@router.get("/search", response_model=ApiResponse[list[UserSearchResultDto]])
+@router.get("/search", response_model=PaginatedResponse[UserSearchResultDto])
 async def search_users(
     q: str = Query(..., min_length=1, max_length=50),
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: FriendService = Depends(get_friend_service),
 ) -> JSONResponse:
-    result = await service.search_users(q, ctx.user_id)
+    result = await service.search_users(q, ctx.user_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
-@router.get("", response_model=ApiResponse[list[FriendshipResponseDto]])
+@router.get("", response_model=PaginatedResponse[FriendshipResponseDto])
 async def list_friends(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: FriendService = Depends(get_friend_service),
 ) -> JSONResponse:
-    result = await service.list_friends(ctx.user_id)
+    result = await service.list_friends(ctx.user_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.post("/invite", response_model=ApiResponse[FriendshipResponseDto])
@@ -46,15 +49,16 @@ async def send_invite(
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data, message="Invite sent.").model_dump())
 
 
-@router.get("/invites", response_model=ApiResponse[list[FriendshipResponseDto]])
+@router.get("/invites", response_model=PaginatedResponse[FriendshipResponseDto])
 async def list_invites(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: FriendService = Depends(get_friend_service),
 ) -> JSONResponse:
-    result = await service.list_invites(ctx.user_id)
+    result = await service.list_invites(ctx.user_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.put("/invites/{invite_id}/accept", response_model=ApiResponse[FriendshipResponseDto])

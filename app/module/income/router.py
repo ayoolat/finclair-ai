@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from app.common.response import ApiResponse
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.income.dto.income import (
     CreateCustomSourceDto,
@@ -19,13 +20,14 @@ from app.module.income.service.income_service import IncomeService, get_income_s
 router = APIRouter(prefix="/income", tags=["income"])
 
 
-@router.get("/sources", response_model=ApiResponse[list[IncomeSourceDto]])
+@router.get("/sources", response_model=PaginatedResponse[IncomeSourceDto])
 async def list_sources(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: IncomeService = Depends(get_income_service),
 ) -> JSONResponse:
-    result = await service.list_sources(ctx.user_id)
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    result = await service.list_sources(ctx.user_id, filters)
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.post("/sources", response_model=ApiResponse[IncomeSourceDto])

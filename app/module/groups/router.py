@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from jose import JWTError
 
-from app.common.response import ApiResponse
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import ApiResponse, PaginatedResponse
 from app.common.security.token import decode_token
 from app.database.session import AsyncSessionLocal
 from app.module.auth.dependencies import AuthContext, get_auth_context
@@ -33,15 +34,16 @@ router = APIRouter(prefix="/groups", tags=["groups"])
 
 # ── Group CRUD ────────────────────────────────────────────────────────────────
 
-@router.get("", response_model=ApiResponse[list[GroupResponseDto]])
+@router.get("", response_model=PaginatedResponse[GroupResponseDto])
 async def list_groups(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: GroupService = Depends(get_group_service),
 ) -> JSONResponse:
-    result = await service.list_groups(ctx.user_id)
+    result = await service.list_groups(ctx.user_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.post("", response_model=ApiResponse[GroupDetailResponseDto])
@@ -163,32 +165,32 @@ async def record_savings(
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data, message="Savings recorded.").model_dump())
 
 
-@router.get("/{group_id}/savings", response_model=ApiResponse[list[SavingsEntryResponseDto]])
+@router.get("/{group_id}/savings", response_model=PaginatedResponse[SavingsEntryResponseDto])
 async def list_savings(
     group_id: uuid.UUID,
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: GroupSavingsService = Depends(get_group_savings_service),
 ) -> JSONResponse:
-    result = await service.list_savings(ctx.user_id, group_id)
+    result = await service.list_savings(ctx.user_id, group_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
-@router.get("/{group_id}/messages", response_model=ApiResponse[list[MessageResponseDto]])
+@router.get("/{group_id}/messages", response_model=PaginatedResponse[MessageResponseDto])
 async def list_messages(
     group_id: uuid.UUID,
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=100),
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: GroupChatService = Depends(get_group_chat_service),
 ) -> JSONResponse:
-    result = await service.list_messages(ctx.user_id, group_id, page, limit)
+    result = await service.list_messages(ctx.user_id, group_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.post("/{group_id}/messages", response_model=ApiResponse[MessageResponseDto])

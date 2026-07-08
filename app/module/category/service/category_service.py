@@ -1,11 +1,12 @@
 import uuid
 
 from fastapi import Depends
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.response import Result
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.category.dto.category import CategoryDto, CreateCategoryDto
 from app.module.category.schema.category import Category
@@ -15,14 +16,24 @@ class CategoryService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def list_categories(self, user_id: uuid.UUID) -> Result[list[CategoryDto]]:
+    async def list_categories(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[CategoryDto]]:
+        base = select(Category).where(or_(Category.user_id.is_(None), Category.user_id == user_id))
+
+        total = (await self._db.execute(
+            select(func.count()).select_from(base.subquery())
+        )).scalar_one()
+
         result = await self._db.execute(
-            select(Category)
-            .where(or_(Category.user_id.is_(None), Category.user_id == user_id))
-            .order_by(Category.user_id.is_(None).desc(), Category.name)
+            base.order_by(Category.user_id.is_(None).desc(), Category.name)
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         categories = [CategoryDto.model_validate(row) for row in result.scalars().all()]
-        return Result.ok(categories)
+        return Result.ok(
+            PaginatedResponse.ok(data=categories, page=filters.page, page_size=filters.page_size, total=total)
+        )
 
     async def create_category(self, user_id: uuid.UUID, dto: CreateCategoryDto) -> Result[CategoryDto]:
         category = Category(

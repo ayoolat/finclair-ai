@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from app.common.response import ApiResponse
+from app.common.dto.pagination import PageQueryDto
+from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.bank.dto.bank import BankResponseDto, LinkBankDto, MonoWebhookDto
 from app.module.bank.service.bank_service import BankService, get_bank_service
@@ -11,26 +12,28 @@ from app.module.bank.service.bank_service import BankService, get_bank_service
 router = APIRouter(prefix="/banks", tags=["banks"])
 
 
-@router.get("", response_model=ApiResponse[list[BankResponseDto]])
+@router.get("", response_model=PaginatedResponse[BankResponseDto])
 async def list_banks(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: BankService = Depends(get_bank_service),
 ) -> JSONResponse:
-    result = await service.list_banks(ctx.user_id)
+    result = await service.list_banks(ctx.user_id, filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
-@router.get("/available", response_model=ApiResponse[list[dict]])
+@router.get("/available", response_model=PaginatedResponse[dict])
 async def list_available_banks(
+    filters: PageQueryDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
     service: BankService = Depends(get_bank_service),
 ) -> JSONResponse:
-    result = await service.list_available_banks()
+    result = await service.list_available_banks(filters)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
 
 
 @router.post("/link", response_model=ApiResponse[BankResponseDto])

@@ -2,12 +2,13 @@ import uuid
 from typing import Optional
 
 from fastapi import Depends
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.income import IncomeReoccurrence
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.income.dto.income import (
     CreateCustomSourceDto,
@@ -34,17 +35,24 @@ class IncomeService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def list_sources(self, user_id: uuid.UUID) -> Result[list[IncomeSourceDto]]:
+    async def list_sources(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[IncomeSourceDto]]:
+        base = select(IncomeSource).where(
+            or_(IncomeSource.user_id == user_id, IncomeSource.is_default == True)  # noqa: E712
+        )
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
-            select(IncomeSource)
-            .where(or_(IncomeSource.user_id == user_id, IncomeSource.is_default == True))  # noqa: E712
-            .order_by(IncomeSource.is_default.desc(), IncomeSource.name)
+            base.order_by(IncomeSource.is_default.desc(), IncomeSource.name)
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         sources = [
             IncomeSourceDto(id=row.id, name=row.name, is_default=row.is_default)
             for row in result.scalars().all()
         ]
-        return Result.ok(sources)
+        return Result.ok(PaginatedResponse.ok(data=sources, page=filters.page, page_size=filters.page_size, total=total))
 
     async def add_custom_source(
         self, user_id: uuid.UUID, dto: CreateCustomSourceDto

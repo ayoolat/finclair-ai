@@ -1,12 +1,13 @@
 import uuid
 
 from fastapi import Depends
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.common.dto.pagination import PageQueryDto
 from app.common.enums.friends import FriendshipStatus
-from app.common.response import Result
+from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.friends.dto.friend import FriendshipResponseDto, UserSearchResultDto
 from app.module.friends.schema.friendship import Friendship
@@ -17,16 +18,20 @@ class FriendService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def search_users(self, query: str, current_user_id: uuid.UUID) -> Result[list[UserSearchResultDto]]:
-        result = await self._db.execute(
-            select(User).where(
-                User.username.ilike(f"%{query}%"),
-                User.id != current_user_id,
-                User.is_active.is_(True),
-            ).limit(20)
+    async def search_users(
+        self, query: str, current_user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[UserSearchResultDto]]:
+        base = select(User).where(
+            User.username.ilike(f"%{query}%"),
+            User.id != current_user_id,
+            User.is_active.is_(True),
         )
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
+        result = await self._db.execute(base.offset(filters.offset).limit(filters.page_size))
         users = result.scalars().all()
-        return Result.ok([UserSearchResultDto.model_validate(u) for u in users])
+        dtos = [UserSearchResultDto.model_validate(u) for u in users]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def send_invite(self, requester_id: uuid.UUID, recipient_id: uuid.UUID) -> Result[FriendshipResponseDto]:
         if requester_id == recipient_id:
@@ -62,17 +67,23 @@ class FriendService:
         )
         return Result.ok(self._to_dto(loaded.scalar_one(), requester_id), status_code=201)
 
-    async def list_invites(self, user_id: uuid.UUID) -> Result[list[FriendshipResponseDto]]:
+    async def list_invites(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[FriendshipResponseDto]]:
+        base = select(Friendship).where(
+            Friendship.recipient_id == user_id,
+            Friendship.status == FriendshipStatus.PENDING,
+        )
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
-            select(Friendship)
-            .options(selectinload(Friendship.requester), selectinload(Friendship.recipient))
-            .where(
-                Friendship.recipient_id == user_id,
-                Friendship.status == FriendshipStatus.PENDING,
-            )
+            base.options(selectinload(Friendship.requester), selectinload(Friendship.recipient))
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         friendships = result.scalars().all()
-        return Result.ok([self._to_dto(f, user_id) for f in friendships])
+        dtos = [self._to_dto(f, user_id) for f in friendships]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def accept_invite(self, user_id: uuid.UUID, invite_id: uuid.UUID) -> Result[FriendshipResponseDto]:
         return await self._update_invite_status(user_id, invite_id, FriendshipStatus.ACCEPTED)
@@ -80,17 +91,23 @@ class FriendService:
     async def decline_invite(self, user_id: uuid.UUID, invite_id: uuid.UUID) -> Result[FriendshipResponseDto]:
         return await self._update_invite_status(user_id, invite_id, FriendshipStatus.DECLINED)
 
-    async def list_friends(self, user_id: uuid.UUID) -> Result[list[FriendshipResponseDto]]:
+    async def list_friends(
+        self, user_id: uuid.UUID, filters: PageQueryDto
+    ) -> Result[PaginatedResponse[FriendshipResponseDto]]:
+        base = select(Friendship).where(
+            or_(Friendship.requester_id == user_id, Friendship.recipient_id == user_id),
+            Friendship.status == FriendshipStatus.ACCEPTED,
+        )
+        total = (await self._db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
+
         result = await self._db.execute(
-            select(Friendship)
-            .options(selectinload(Friendship.requester), selectinload(Friendship.recipient))
-            .where(
-                or_(Friendship.requester_id == user_id, Friendship.recipient_id == user_id),
-                Friendship.status == FriendshipStatus.ACCEPTED,
-            )
+            base.options(selectinload(Friendship.requester), selectinload(Friendship.recipient))
+            .offset(filters.offset)
+            .limit(filters.page_size)
         )
         friendships = result.scalars().all()
-        return Result.ok([self._to_dto(f, user_id) for f in friendships])
+        dtos = [self._to_dto(f, user_id) for f in friendships]
+        return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def remove_friend(self, user_id: uuid.UUID, friendship_id: uuid.UUID) -> Result[None]:
         result = await self._db.execute(
