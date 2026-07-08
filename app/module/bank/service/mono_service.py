@@ -8,6 +8,12 @@ from app.common.clients.mono_client import get_mono_async_client
 logger = logging.getLogger(__name__)
 
 
+def _unwrap(body: dict) -> dict:
+    """Mono wraps most GET responses as {"data": {...}}; some are returned bare."""
+    data = body.get("data")
+    return data if isinstance(data, dict) else body
+
+
 class MonoService:
     def __init__(self) -> None:
         self._client = get_mono_async_client()
@@ -19,12 +25,17 @@ class MonoService:
         """
         try:
             response = await self._client.post("/accounts/auth", json={"code": code})
+            body = response.json()
+            logger.info("Mono exchange_code response (%s): %s", response.status_code, body)
             if response.status_code != 200:
-                body = response.json()
                 error_msg = body.get("message") or body.get("error") or f"Mono returned {response.status_code}"
                 logger.error("Mono exchange_code failed (%s): %s", response.status_code, body)
                 return None, error_msg
-            return response.json().get("id"), None
+            account_id = _unwrap(body).get("id")
+            if not account_id:
+                logger.error("Mono exchange_code returned 200 with no account id: %s", body)
+                return None, "Mono did not return an account id for this code."
+            return account_id, None
         except httpx.HTTPError as exc:
             logger.error("Mono exchange_code HTTP error: %s", exc)
             return None, "Could not reach Mono. Please try again."
@@ -33,7 +44,7 @@ class MonoService:
         try:
             response = await self._client.get(f"/accounts/{account_id}")
             response.raise_for_status()
-            return response.json()
+            return _unwrap(response.json())
         except Exception as exc:
             logger.error("Mono get_account failed for %s: %s", account_id, exc)
             return None
@@ -42,7 +53,7 @@ class MonoService:
         try:
             response = await self._client.get(f"/accounts/{account_id}")
             response.raise_for_status()
-            data = response.json()
+            data = _unwrap(response.json())
             return {
                 "balance": data.get("balance"),
                 "currency": data.get("currency", "NGN"),
