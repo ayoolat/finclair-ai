@@ -14,6 +14,13 @@ def _unwrap(body: dict) -> dict:
     return data if isinstance(data, dict) else body
 
 
+def _unwrap_account(body: dict) -> dict:
+    """GET /accounts/{id} nests the account object one level further: {"data": {"account": {...}}}."""
+    outer = _unwrap(body)
+    account = outer.get("account")
+    return account if isinstance(account, dict) else outer
+
+
 class MonoService:
     def __init__(self) -> None:
         self._client = get_mono_async_client()
@@ -44,7 +51,7 @@ class MonoService:
         try:
             response = await self._client.get(f"/accounts/{account_id}")
             response.raise_for_status()
-            return _unwrap(response.json())
+            return _unwrap_account(response.json())
         except Exception as exc:
             logger.error("Mono get_account failed for %s: %s", account_id, exc)
             return None
@@ -53,11 +60,11 @@ class MonoService:
         try:
             response = await self._client.get(f"/accounts/{account_id}")
             response.raise_for_status()
-            data = _unwrap(response.json())
+            data = _unwrap_account(response.json())
             return {
                 "balance": data.get("balance"),
                 "currency": data.get("currency", "NGN"),
-                "account_number": data.get("accountNumber"),
+                "account_number": data.get("account_number"),
                 "name": data.get("name"),
             }
         except Exception as exc:

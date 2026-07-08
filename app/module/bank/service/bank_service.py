@@ -66,7 +66,7 @@ class BankService:
         bank = Bank(
             user_id=user_id,
             name=institution.get("name", "Unknown Bank"),
-            account_number=account_details.get("accountNumber", ""),
+            account_number=account_details.get("account_number", ""),
             mono_account_id=account_id,
             mono_code=dto.code,
             created_by=user_id,
