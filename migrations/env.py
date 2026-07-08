@@ -27,6 +27,7 @@ from app.module.groups.schema.group_savings_entry import GroupSavingsEntry  # no
 from app.module.groups.schema.group_message import GroupMessage  # noqa: F401
 from app.module.marketing.schema.newsletter import NewsletterSubscriber  # noqa: F401
 from app.module.marketing.schema.waitlist import WaitlistEntry  # noqa: F401
+from app.module.clara.schema.clara_message import ClaraMessage  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
