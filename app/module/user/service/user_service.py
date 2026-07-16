@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response import Result
-from app.module.user.dto.user import CreateUserDto, UserResponseDto
+from app.module.user.dto.user import CreateUserDto, UpdateUserDto, UserResponseDto
 from app.module.user.schema.user import User
 
 
@@ -44,8 +44,23 @@ class UserService:
             username=dto.username,
             hashed_passcode=hashed_passcode,
             default_currency=dto.default_currency,
+            profile_icon=dto.profile_icon,
         )
         self._db.add(user)
         await self._db.commit()
         await self._db.refresh(user)
         return Result.ok(UserResponseDto.model_validate(user), status_code=201)
+
+    async def update(self, user_id: uuid.UUID, dto: UpdateUserDto) -> Result[UserResponseDto]:
+        result = await self._db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return Result.fail("User not found.", error_code="USER_NOT_FOUND", status_code=404)
+
+        updates = dto.model_dump(exclude_unset=True)
+        for field, value in updates.items():
+            setattr(user, field, value)
+
+        await self._db.commit()
+        await self._db.refresh(user)
+        return Result.ok(UserResponseDto.model_validate(user))

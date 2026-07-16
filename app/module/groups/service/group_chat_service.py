@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupMemberStatus, MessageRole, MessageType
+from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
@@ -15,6 +16,7 @@ from app.module.groups.dto.group import MessageResponseDto, SendMessageDto
 from app.module.groups.schema.group_member import GroupMember
 from app.module.groups.schema.group_message import GroupMessage
 from app.module.groups.schema.group_savings_entry import GroupSavingsEntry
+from app.module.groups.service._helpers import receipt_amount_matches
 from app.module.user.schema.user import User
 
 
@@ -38,6 +40,7 @@ class GroupChatService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._storage = get_storage_provider()
+        self._ocr = get_ocr_provider()
 
     async def list_messages(
         self, user_id: uuid.UUID, group_id: uuid.UUID, filters: PageQueryDto
@@ -89,11 +92,29 @@ class GroupChatService:
             return Result.fail("You are not a member of this group.", status_code=403)
 
         data = await file.read()
+        content_type = file.content_type or "image/jpeg"
+
+        if record_amount and record_amount > 0:
+            try:
+                ocr_result = await self._ocr.parse_receipt(data, content_type)
+            except ValueError as exc:
+                return Result.fail(str(exc), error_code="INVALID_IMAGE", status_code=400)
+            except RuntimeError as exc:
+                return Result.fail(
+                    f"Could not verify the receipt: {exc}", error_code="OCR_FAILED", status_code=502
+                )
+
+            if not receipt_amount_matches(record_amount, ocr_result.total):
+                return Result.fail(
+                    f"The receipt shows {ocr_result.total}, which doesn't match the "
+                    f"{record_amount} you reported. Please correct the amount or upload the matching receipt.",
+                    error_code="RECEIPT_AMOUNT_MISMATCH",
+                    status_code=422,
+                )
+
         ext = (file.filename or "file").rsplit(".", 1)[-1]
         file_name = f"{uuid.uuid4()}.{ext}"
-        await self._storage.upload(
-            f"groups/{group_id}/chat", file_name, data, file.content_type or "image/jpeg"
-        )
+        await self._storage.upload(f"groups/{group_id}/chat", file_name, data, content_type)
         file_url = self._storage.public_url(f"groups/{group_id}/chat", file_name)
 
         msg = GroupMessage(

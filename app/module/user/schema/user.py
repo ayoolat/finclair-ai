@@ -31,6 +31,7 @@ class User(AuditMixin, Base):
     default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="USD")
     auth_provider: Mapped[str] = mapped_column(String(20), nullable=False, default=AuthProvider.EMAIL)
     firebase_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    profile_icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     goals: Mapped[list["UserGoal"]] = relationship(
         "UserGoal",

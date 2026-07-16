@@ -46,7 +46,7 @@ class GroupService:
             .limit(filters.page_size)
         )
         groups = result.scalars().unique().all()
-        dtos = [group_to_dto(g, [m for m in g.members if m.left_at is None]) for g in groups]
+        dtos = [group_to_dto(g, [m for m in g.members if m.left_at is None], user_id) for g in groups]
         return Result.ok(PaginatedResponse.ok(data=dtos, page=filters.page, page_size=filters.page_size, total=total))
 
     async def create_group(self, user_id: uuid.UUID, dto: CreateGroupDto) -> Result[GroupDetailResponseDto]:
@@ -91,7 +91,7 @@ class GroupService:
         user_map = await self._load_user_map([m.user_id for m in members])
         member_dtos = [member_to_dto(m, user_map[m.user_id]) for m in members if m.user_id in user_map]
         return Result.ok(
-            GroupDetailResponseDto(**group_to_dto(group, members).model_dump(), members=member_dtos),
+            GroupDetailResponseDto(**group_to_dto(group, members, user_id).model_dump(), members=member_dtos),
             status_code=201,
         )
 
@@ -109,7 +109,7 @@ class GroupService:
 
         user_map = await self._load_user_map([m.user_id for m in active])
         member_dtos = [member_to_dto(m, user_map[m.user_id]) for m in active if m.user_id in user_map]
-        return Result.ok(GroupDetailResponseDto(**group_to_dto(group, active).model_dump(), members=member_dtos))
+        return Result.ok(GroupDetailResponseDto(**group_to_dto(group, active, user_id).model_dump(), members=member_dtos))
 
     async def update_group(self, user_id: uuid.UUID, group_id: uuid.UUID, dto: UpdateGroupDto) -> Result[GroupResponseDto]:
         group = await self._owned_group(user_id, group_id)
@@ -124,7 +124,7 @@ class GroupService:
         await self._db.commit()
         await self._db.refresh(group, ["members"])
         active = [m for m in group.members if m.left_at is None]
-        return Result.ok(group_to_dto(group, active))
+        return Result.ok(group_to_dto(group, active, user_id))
 
     async def delete_group(self, user_id: uuid.UUID, group_id: uuid.UUID) -> Result[None]:
         group = await self._owned_group(user_id, group_id)

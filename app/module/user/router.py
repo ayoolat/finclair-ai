@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response import ApiResponse
 from app.database.session import get_db
 from app.module.auth.dependencies import AuthContext, get_auth_context
-from app.module.user.dto.user import UserResponseDto
+from app.module.user.dto.user import UpdateUserDto, UserResponseDto
 from app.module.user.service.user_service import UserService
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -29,6 +29,18 @@ async def get_me(
     ctx: AuthContext = Depends(get_auth_context),
 ) -> JSONResponse:
     result = await UserService(db).get_by_id(ctx.user_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error or "User not found.").model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+@router.patch("/me", response_model=ApiResponse[UserResponseDto])
+async def update_me(
+    dto: UpdateUserDto,
+    db: AsyncSession = Depends(get_db),
+    ctx: AuthContext = Depends(get_auth_context),
+) -> JSONResponse:
+    result = await UserService(db).update(ctx.user_id, dto)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error or "User not found.").model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())

@@ -25,9 +25,30 @@ def shareable_link(group_id: uuid.UUID) -> str:
     return f"{base}/e/{group_id}"
 
 
-def group_to_dto(group: Group, members: list[GroupMember]) -> GroupResponseDto:
+_RECEIPT_AMOUNT_TOLERANCE_PCT = Decimal("0.01")  # 1% allowed drift (rounding, OCR noise)
+_RECEIPT_AMOUNT_TOLERANCE_MIN = Decimal("0.01")  # minimum absolute tolerance
+
+
+def receipt_amount_matches(claimed: Decimal, detected: Decimal) -> bool:
+    tolerance = max(_RECEIPT_AMOUNT_TOLERANCE_MIN, claimed * _RECEIPT_AMOUNT_TOLERANCE_PCT)
+    return abs(claimed - detected) <= tolerance
+
+
+def group_to_dto(group: Group, members: list[GroupMember], viewer_id: uuid.UUID) -> GroupResponseDto:
     total_raised = sum(Decimal(str(m.contributed_amount or 0)) for m in members)
     target = Decimal(str(group.target_amount))
+
+    if viewer_id == group.owner_id:
+        amount_paid, amount_assigned = total_raised, target
+    else:
+        viewer_member = next((m for m in members if m.user_id == viewer_id), None)
+        amount_paid = Decimal(str(viewer_member.contributed_amount or 0)) if viewer_member else Decimal(0)
+        amount_assigned = (
+            Decimal(str(viewer_member.target_amount))
+            if viewer_member and viewer_member.target_amount is not None
+            else Decimal(0)
+        )
+
     return GroupResponseDto(
         id=group.id,
         name=group.name,
@@ -41,6 +62,9 @@ def group_to_dto(group: Group, members: list[GroupMember]) -> GroupResponseDto:
         member_count=len(members),
         progress_percent=savings_progress(total_raised, target),
         shareable_link=shareable_link(group.id),
+        amount_paid=amount_paid,
+        amount_left=max(Decimal(0), amount_assigned - amount_paid),
+        amount_assigned=amount_assigned,
     )
 
 

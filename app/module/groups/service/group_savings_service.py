@@ -8,18 +8,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupMemberStatus
+from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.groups.dto.group import RecordSavingsDto, SavingsEntryResponseDto
 from app.module.groups.schema.group_member import GroupMember
 from app.module.groups.schema.group_savings_entry import GroupSavingsEntry
+from app.module.groups.service._helpers import receipt_amount_matches
 
 
 class GroupSavingsService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._storage = get_storage_provider()
+        self._ocr = get_ocr_provider()
 
     async def record_savings(
         self,
@@ -35,11 +38,28 @@ class GroupSavingsService:
         file_url: Optional[str] = None
         if receipt:
             data = await receipt.read()
+            content_type = receipt.content_type or "image/jpeg"
+
+            try:
+                ocr_result = await self._ocr.parse_receipt(data, content_type)
+            except ValueError as exc:
+                return Result.fail(str(exc), error_code="INVALID_IMAGE", status_code=400)
+            except RuntimeError as exc:
+                return Result.fail(
+                    f"Could not verify the receipt: {exc}", error_code="OCR_FAILED", status_code=502
+                )
+
+            if not receipt_amount_matches(dto.amount, ocr_result.total):
+                return Result.fail(
+                    f"The receipt shows {ocr_result.total}, which doesn't match the "
+                    f"{dto.amount} you reported. Please correct the amount or upload the matching receipt.",
+                    error_code="RECEIPT_AMOUNT_MISMATCH",
+                    status_code=422,
+                )
+
             ext = (receipt.filename or "file").rsplit(".", 1)[-1]
             file_name = f"{uuid.uuid4()}.{ext}"
-            await self._storage.upload(
-                f"groups/{group_id}/receipts", file_name, data, receipt.content_type or "image/jpeg"
-            )
+            await self._storage.upload(f"groups/{group_id}/receipts", file_name, data, content_type)
             file_url = self._storage.public_url(f"groups/{group_id}/receipts", file_name)
 
         contributed = Decimal(str(member.contributed_amount or 0)) + dto.amount

@@ -64,6 +64,9 @@ class GroupResponseDto(BaseModel):
     member_count: int
     progress_percent: float
     shareable_link: str
+    amount_paid: Decimal
+    amount_left: Decimal
+    amount_assigned: Decimal
 
     model_config = {"from_attributes": True}
 
