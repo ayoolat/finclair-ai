@@ -7,8 +7,6 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_PAYSTACK_BASE_URL = "https://api.paystack.co"
-
 
 class _PaystackClientSingleton:
     _instance: Optional[httpx.Client] = None
@@ -17,7 +15,7 @@ class _PaystackClientSingleton:
     def get(cls) -> httpx.Client:
         if cls._instance is None:
             cls._instance = httpx.Client(
-                base_url=_PAYSTACK_BASE_URL,
+                base_url=settings.paystack_base_url,
                 headers={
                     "Authorization": f"Bearer {settings.paystack_secret_key}",
                     "Content-Type": "application/json",

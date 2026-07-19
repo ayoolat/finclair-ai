@@ -38,8 +38,13 @@ class Settings(BaseSettings):
     mono_public_key: str = ""
     mono_secret_key: str
 
-    # Paystack — bank list sync
+    # Paystack — bank list sync + subscription billing
+    paystack_base_url: str = "https://api.paystack.co"
     paystack_secret_key: str
+    paystack_public_key: str
+
+    # Subscription billing — which provider implementation to use
+    payment_provider: str = "paystack"
 
     # OpenAI — receipt OCR
     openai_api_key: str

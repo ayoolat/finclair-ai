@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.module.expense.schema.expense import Expense
     from app.module.budget.schema.budget import Budget
     from app.module.user.schema.user_goal import UserGoal
+    from app.module.subscription.schema.subscription import Subscription
 
 
 class User(AuditMixin, Base):
@@ -49,4 +50,11 @@ class User(AuditMixin, Base):
     )
     budgets: Mapped[list["Budget"]] = relationship(
         "Budget", back_populates="user", foreign_keys="Budget.user_id", cascade="all, delete-orphan"
+    )
+    subscription: Mapped["Subscription | None"] = relationship(
+        "Subscription",
+        back_populates="user",
+        foreign_keys="Subscription.user_id",
+        cascade="all, delete-orphan",
+        uselist=False,
     )

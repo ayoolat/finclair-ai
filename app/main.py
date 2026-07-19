@@ -23,6 +23,8 @@ from app.module.goal.router import router as goal_router
 from app.module.groups.router import router as groups_router
 from app.module.income.router import router as income_router
 from app.module.marketing.router import router as marketing_router
+from app.module.subscription.router import router as subscription_router
+from app.module.subscription.service.billing_job import process_subscription_billing
 from app.module.user.router import router as user_router
 
 configure_logging(debug=settings.debug)
@@ -32,6 +34,7 @@ configure_logging(debug=settings.debug)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await run_startup_checks()
     schedule_daily("sync_paystack_banks", sync_paystack_banks)
+    schedule_daily("process_subscription_billing", process_subscription_billing)
     yield
 
 
@@ -74,6 +77,7 @@ app.include_router(friends_router, prefix="/api/v1")
 app.include_router(groups_router, prefix="/api/v1")
 app.include_router(marketing_router, prefix="/api/v1")
 app.include_router(clara_router, prefix="/api/v1")
+app.include_router(subscription_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])

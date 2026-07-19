@@ -132,6 +132,58 @@ async def seed_categories() -> None:
         logger.error("Categories      ✗  seed FAILED — %s", exc)
 
 
+async def seed_subscription_plans() -> None:
+    from sqlalchemy import select
+    from app.module.subscription.schema.subscription import SubscriptionPlan
+
+    features = [
+        "Advanced analytics, planning and habit-building",
+        "Access AI insights on spending and budgeting",
+        "Sync unlimited accounts and cards",
+        "Yearly, monthly and biweekly budgets",
+        "Unlimited shared savings",
+        "Unlimited savings goals",
+        "Advanced savings and financial planning",
+        "Advanced savings projections and goal tracking",
+    ]
+    defaults = [
+        {
+            "code": "go_unlimited_monthly",
+            "name": "Go Unlimited — Monthly",
+            "amount": 300_000,  # kobo => ₦3,000
+            "compare_at_amount": 400_000,  # ₦4,000
+            "currency": "NGN",
+            "interval_days": 30,
+            "trial_days": 7,
+            "features": features,
+        },
+        {
+            "code": "go_unlimited_yearly",
+            "name": "Go Unlimited — Yearly",
+            "amount": 2_800_000,  # kobo => ₦28,000
+            "compare_at_amount": 2_900_000,  # ₦29,000
+            "currency": "NGN",
+            "interval_days": 365,
+            "trial_days": 7,
+            "features": features,
+        },
+    ]
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(SubscriptionPlan))
+            existing_codes = {row.code for row in result.scalars().all()}
+            missing = [p for p in defaults if p["code"] not in existing_codes]
+            if missing:
+                for p in missing:
+                    session.add(SubscriptionPlan(**p))
+                await session.commit()
+                logger.info("Subscription plans  ✓  seeded (%s)", ", ".join(p["code"] for p in missing))
+            else:
+                logger.info("Subscription plans  ✓  present")
+    except Exception as exc:
+        logger.error("Subscription plans  ✗  seed FAILED — %s", exc)
+
+
 _NIGERIAN_BANKS_SEED = [
     {"paystack_id": 1,   "name": "Access Bank",                  "code": "044", "slug": "access-bank",                  "bank_type": "nuban"},
     {"paystack_id": 2,   "name": "Citibank Nigeria",              "code": "023", "slug": "citibank-nigeria",              "bank_type": "nuban"},
@@ -258,6 +310,7 @@ async def run_startup_checks() -> None:
     await seed_income_sources()
     await seed_financial_goals()
     await seed_categories()
+    await seed_subscription_plans()
     await sync_paystack_banks()
     db_ok = await check_database()
     redis_ok = check_redis()
