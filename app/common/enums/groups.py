@@ -8,6 +8,11 @@ class GroupMemberStatus(str, Enum):
     REMOVED = "removed"
 
 
+class RedistributionChoice(str, Enum):
+    SELF = "self"
+    SPLIT = "split"
+
+
 class MessageType(str, Enum):
     TEXT = "text"
     IMAGE = "image"

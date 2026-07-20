@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from jose import JWTError
 
 from app.common.dto.pagination import PageQueryDto
+from app.common.enums.groups import RedistributionChoice
 from app.common.response import ApiResponse, PaginatedResponse
 from app.common.security.token import decode_token
 from app.database.session import AsyncSessionLocal
@@ -139,10 +140,13 @@ async def update_member(
 async def remove_member(
     group_id: uuid.UUID,
     member_id: uuid.UUID,
+    redistribution: RedistributionChoice = Query(
+        ..., description="What to do with the removed member's unmet target: 'self' assigns it to you, 'split' divides it equally among the remaining members."
+    ),
     ctx: AuthContext = Depends(get_auth_context),
     service: GroupMemberService = Depends(get_group_member_service),
 ) -> JSONResponse:
-    result = await service.remove_member(ctx.user_id, group_id, member_id)
+    result = await service.remove_member(ctx.user_id, group_id, member_id, redistribution)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(message="Member removed.").model_dump())
