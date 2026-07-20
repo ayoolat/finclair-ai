@@ -250,6 +250,34 @@ class ExpenseService:
                 )
             expense.categories = categories
 
+        if dto.items is not None:
+            items_by_id = {item.id: item for item in expense.items}
+            for item_dto in dto.items:
+                item = items_by_id.get(item_dto.id)
+                if item is None:
+                    return Result.fail(
+                        f"Item {item_dto.id} not found on this expense.",
+                        error_code="NOT_FOUND",
+                        status_code=404,
+                    )
+
+                if item_dto.category_id is not None:
+                    categories = await self._fetch_categories([item_dto.category_id])
+                    if not categories:
+                        return Result.fail(
+                            "Invalid category ID.", error_code="INVALID_CATEGORY", status_code=400
+                        )
+                    item.category_id = item_dto.category_id
+
+                if item_dto.name is not None:
+                    item.name = item_dto.name
+                if item_dto.quantity is not None:
+                    item.quantity = item_dto.quantity
+                if item_dto.unit_price is not None:
+                    item.unit_price = item_dto.unit_price
+                item.total_price = item.unit_price * item.quantity
+                item.updated_by = user_id
+
         expense.updated_by = user_id
         await self._db.commit()
         expense = await self._load(expense_id, user_id)  # type: ignore[assignment]

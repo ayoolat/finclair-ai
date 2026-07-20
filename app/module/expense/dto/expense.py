@@ -33,6 +33,28 @@ class ExpenseItemCreateDto(BaseModel):
         return v
 
 
+class UpdateExpenseItemDto(BaseModel):
+    id: uuid.UUID
+    name: Optional[str] = None
+    quantity: Optional[int] = None
+    unit_price: Optional[Decimal] = None
+    category_id: Optional[uuid.UUID] = None
+
+    @field_validator("quantity")
+    @classmethod
+    def quantity_positive(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and v <= 0:
+            raise ValueError("Quantity must be greater than zero.")
+        return v
+
+    @field_validator("unit_price")
+    @classmethod
+    def price_non_negative(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is not None and v < 0:
+            raise ValueError("Unit price must be non-negative.")
+        return v
+
+
 class ExpenseItemResponseDto(BaseModel):
     id: uuid.UUID
     name: str
@@ -71,6 +93,7 @@ class UpdateExpenseDto(BaseModel):
     expense_date: Optional[datetime] = None
     currency: Optional[str] = None
     status: Optional[ExpenseStatus] = None
+    items: Optional[list[UpdateExpenseItemDto]] = None
 
     @field_validator("amount")
     @classmethod
