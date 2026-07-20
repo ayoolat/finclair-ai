@@ -97,8 +97,9 @@ class BudgetService:
                 error_code="CONFLICT",
                 status_code=409,
             )
+        budget_id = budget.id
         self._db.expire_all()
-        budget = await self._load(budget.id, user_id)  # type: ignore[assignment]
+        budget = await self._load(budget_id, user_id)  # type: ignore[assignment]
         return Result.ok(await self._to_dto(budget, user_id), status_code=201)  # type: ignore[arg-type]
 
     # ── Update ────────────────────────────────────────────────────────────────
