@@ -149,7 +149,7 @@ async def remove_member(
     result = await service.remove_member(ctx.user_id, group_id, member_id, redistribution)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
-    return JSONResponse(status _code=200, content=ApiResponse.ok(message="Member removed.").model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(message="Member removed.").model_dump())
 
 
 # ── Savings ───────────────────────────────────────────────────────────────────
