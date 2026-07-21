@@ -6,9 +6,8 @@ from typing import Optional
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.common.enums.groups import GroupMemberStatus, RedistributionChoice
+from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus, InviteResponse, RedistributionChoice
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.groups.dto.group import GroupMemberResponseDto, UpdateMemberDto
@@ -94,6 +93,55 @@ class GroupMemberService:
                 share = (unmet / len(remaining_members)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                 for m in remaining_members:
                     self._add_to_target(m, share)
+
+        await self._db.commit()
+        return Result.ok(None)
+
+    async def respond_to_invite(
+        self, user_id: uuid.UUID, group_id: uuid.UUID, response: InviteResponse
+    ) -> Result[Optional[GroupMemberResponseDto]]:
+        group = await self._db.scalar(select(Group).where(Group.id == group_id))
+        if not group:
+            return Result.fail("Group not found.", status_code=404)
+
+        member = await self._db.scalar(
+            select(GroupMember).where(
+                GroupMember.group_id == group_id,
+                GroupMember.user_id == user_id,
+                GroupMember.left_at.is_(None),
+            )
+        )
+        if not member:
+            return Result.fail("Invite not found.", status_code=404)
+        if member.invite_status == GroupInviteStatus.DECLINED:
+            return Result.fail("You already declined this invite.", status_code=409)
+
+        if response == InviteResponse.ACCEPTED:
+            member.invite_status = GroupInviteStatus.ACCEPTED
+            await self._db.commit()
+            user = await self._db.scalar(select(User).where(User.id == member.user_id))
+            return Result.ok(member_to_dto(member, user))
+
+        if group.owner_id == user_id:
+            return Result.fail("You cannot decline your own group.")
+
+        unmet = Decimal(str(member.target_amount or 0)) - Decimal(str(member.contributed_amount or 0))
+        unmet = max(Decimal(0), unmet)
+
+        member.invite_status = GroupInviteStatus.DECLINED
+        member.status = GroupMemberStatus.REMOVED
+        member.left_at = datetime.now(timezone.utc)
+
+        if unmet > 0:
+            owner_member = await self._db.scalar(
+                select(GroupMember).where(
+                    GroupMember.group_id == group_id,
+                    GroupMember.user_id == group.owner_id,
+                    GroupMember.left_at.is_(None),
+                )
+            )
+            if owner_member is not None:
+                self._add_to_target(owner_member, unmet)
 
         await self._db.commit()
         return Result.ok(None)

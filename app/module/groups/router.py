@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from jose import JWTError
 
 from app.common.dto.pagination import PageQueryDto
-from app.common.enums.groups import RedistributionChoice
+from app.common.enums.groups import InviteResponse, RedistributionChoice
 from app.common.response import ApiResponse, PaginatedResponse
 from app.common.security.token import decode_token
 from app.database.session import AsyncSessionLocal
@@ -19,6 +19,7 @@ from app.module.groups.dto.group import (
     GroupResponseDto,
     MessageResponseDto,
     RecordSavingsDto,
+    RespondToInviteDto,
     SavingsEntryResponseDto,
     SendMessageDto,
     UpdateGroupDto,
@@ -150,6 +151,20 @@ async def remove_member(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(message="Member removed.").model_dump())
+
+
+@router.post("/{group_id}/invite", response_model=ApiResponse[Optional[GroupMemberResponseDto]])
+async def respond_to_invite(
+    group_id: uuid.UUID,
+    dto: RespondToInviteDto,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: GroupMemberService = Depends(get_group_member_service),
+) -> JSONResponse:
+    result = await service.respond_to_invite(ctx.user_id, group_id, dto.response)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    message = "Invite accepted." if dto.response == InviteResponse.ACCEPTED else "Invite declined."
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message=message).model_dump())
 
 
 # ── Savings ───────────────────────────────────────────────────────────────────

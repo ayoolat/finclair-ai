@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
-from app.common.enums.groups import GroupMemberStatus, MessageRole, MessageType
+from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus, MessageRole, MessageType
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
@@ -176,6 +176,7 @@ class GroupChatService:
                     GroupMember.group_id == group_id,
                     GroupMember.user_id == user_id,
                     GroupMember.left_at.is_(None),
+                    GroupMember.invite_status == GroupInviteStatus.ACCEPTED,
                 )
             )
         )

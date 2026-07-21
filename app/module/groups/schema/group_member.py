@@ -32,6 +32,7 @@ class GroupMember(Base):
         Numeric(15, 2), nullable=False, default=Decimal(0)
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    invite_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

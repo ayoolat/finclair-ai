@@ -8,6 +8,17 @@ class GroupMemberStatus(str, Enum):
     REMOVED = "removed"
 
 
+class GroupInviteStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
+class InviteResponse(str, Enum):
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+
+
 class RedistributionChoice(str, Enum):
     SELF = "self"
     SPLIT = "split"

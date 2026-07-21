@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.common.dto.pagination import PageQueryDto
-from app.common.enums.groups import GroupMemberStatus
+from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus
 from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.groups.dto.group import CreateGroupDto, GroupDetailResponseDto, GroupResponseDto, UpdateGroupDto
@@ -81,6 +81,7 @@ class GroupService:
                 target_amount=per_member_target,
                 contributed_amount=Decimal(0),
                 status=GroupMemberStatus.PENDING,
+                invite_status=GroupInviteStatus.ACCEPTED if mid == user_id else GroupInviteStatus.PENDING,
             )
             for mid in all_member_ids
         ]
@@ -104,8 +105,11 @@ class GroupService:
             return Result.fail("Group not found.", status_code=404)
 
         active = [m for m in group.members if m.left_at is None]
-        if not any(m.user_id == user_id for m in active):
+        viewer_member = next((m for m in active if m.user_id == user_id), None)
+        if viewer_member is None:
             return Result.fail("You are not a member of this group.", status_code=403)
+        if user_id != group.owner_id and viewer_member.invite_status != GroupInviteStatus.ACCEPTED:
+            return Result.fail("Accept the group invite to view this group.", status_code=403)
 
         user_map = await self._load_user_map([m.user_id for m in active])
         member_dtos = [member_to_dto(m, user_map[m.user_id]) for m in active if m.user_id in user_map]

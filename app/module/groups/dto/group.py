@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
-from app.common.enums.groups import GroupMemberStatus, MessageRole, MessageType
+from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus, InviteResponse, MessageRole, MessageType
 
 
 class CreateGroupDto(BaseModel):
@@ -28,6 +28,10 @@ class UpdateGroupDto(BaseModel):
     end_date: Optional[date] = None
 
 
+class RespondToInviteDto(BaseModel):
+    response: InviteResponse
+
+
 class UpdateMemberDto(BaseModel):
     target_amount: Decimal
 
@@ -44,6 +48,7 @@ class GroupMemberResponseDto(BaseModel):
     user_id: uuid.UUID
     username: str
     status: GroupMemberStatus
+    invite_status: GroupInviteStatus
     target_amount: Optional[Decimal]
     contributed_amount: Decimal
     joined_at: datetime
@@ -58,6 +63,7 @@ class GroupResponseDto(BaseModel):
     end_date: date
     owner_id: uuid.UUID
     created_at: datetime
+    invite_status: GroupInviteStatus
     total_raised: Decimal
     balance: Decimal
     days_left: int
