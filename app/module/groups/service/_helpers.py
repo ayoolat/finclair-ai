@@ -34,6 +34,8 @@ def receipt_amount_matches(claimed: Decimal, detected: Decimal) -> bool:
     return abs(claimed - detected) <= tolerance
 
 
+
+
 def group_to_dto(group: Group, members: list[GroupMember], viewer_id: uuid.UUID) -> GroupResponseDto:
     total_raised = sum(Decimal(str(m.contributed_amount or 0)) for m in members)
     target = Decimal(str(group.target_amount))
