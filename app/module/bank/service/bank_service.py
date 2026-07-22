@@ -1,5 +1,6 @@
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -16,6 +17,8 @@ from app.module.bank.schema.bank import Bank
 from app.module.bank.service.mono_service import MonoService, get_mono_service
 from app.module.expense.schema.expense import Expense
 from app.module.paystack_bank.schema.paystack_bank import PaystackBank
+
+logger = logging.getLogger(__name__)
 
 
 class BankService:
@@ -86,6 +89,34 @@ class BankService:
         await self._db.refresh(bank)
         return Result.ok(BankResponseDto.model_validate(bank), status_code=201)
 
+    # ── Mono webhook events ──────────────────────────────────────────────────
+
+    async def handle_mono_webhook(self, event: str, data: dict) -> Result[dict]:
+        if event == "mono.events.account_updated":
+            account_id = data.get("account", {}).get("_id") or data.get("id")
+            if not account_id:
+                logger.warning("Mono webhook %s missing account id", event)
+                return Result.ok({"handled": False, "event": event})
+
+            bank = await self._load_bank_by_mono_id(account_id)
+            if bank is None:
+                logger.warning("Mono webhook %s for unknown account_id=%s", event, account_id)
+                return Result.ok({"handled": False, "event": event})
+
+            sync_result = await self.sync_transactions(bank.user_id, bank.id)
+            if sync_result.is_err:
+                logger.warning(
+                    "Mono webhook %s: sync failed for bank_id=%s — %s",
+                    event, bank.id, sync_result.error,
+                )
+                return Result.ok({"handled": False, "event": event})
+
+            logger.info("Mono webhook %s: synced bank_id=%s", event, bank.id)
+            return Result.ok({"handled": True, "event": event, **sync_result.data})
+
+        logger.info("Mono webhook %s: no handler, acknowledged", event)
+        return Result.ok({"handled": False, "event": event})
+
     # ── Balance ───────────────────────────────────────────────────────────────
 
     async def get_balance(self, user_id: uuid.UUID, bank_id: uuid.UUID) -> Result[dict]:
@@ -137,7 +168,7 @@ class BankService:
                 user_id=user_id,
                 amount=amount,
                 description=tx.get("narration"),
-                expense_date=datetime.fromisoformat(tx["date"]) if "date" in tx else datetime.utcnow(),
+                expense_date=datetime.fromisoformat(tx["date"]) if "date" in tx else datetime.now(timezone.utc),
                 currency=tx.get("currency", "NGN"),
                 type=expense_type,
                 direction=direction,
@@ -160,7 +191,7 @@ class BankService:
         if bank is None:
             return Result.fail("Bank not found.", error_code="NOT_FOUND", status_code=404)
 
-        bank.deleted_at = datetime.utcnow()
+        bank.deleted_at = datetime.now(timezone.utc)
         bank.updated_by = user_id
         await self._db.commit()
         return Result.ok({"message": "Bank disconnected."})
@@ -172,6 +203,15 @@ class BankService:
             select(Bank).where(
                 Bank.id == bank_id,
                 Bank.user_id == user_id,
+                Bank.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _load_bank_by_mono_id(self, mono_account_id: str) -> Optional[Bank]:
+        result = await self._db.execute(
+            select(Bank).where(
+                Bank.mono_account_id == mono_account_id,
                 Bank.deleted_at.is_(None),
             )
         )

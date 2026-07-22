@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.response import ApiResponse, PaginatedResponse
+from app.core.config import settings
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.bank.dto.bank import BankResponseDto, LinkBankDto, MonoWebhookDto
 from app.module.bank.service.bank_service import BankService, get_bank_service
@@ -87,7 +88,12 @@ async def get_balance(
 @router.post("/mono/webhook", include_in_schema=False)
 async def mono_webhook(
     dto: MonoWebhookDto,
+    mono_webhook_secret: str = Header(None, alias="Mono-Webhook-Secret"),
     service: BankService = Depends(get_bank_service),
 ) -> JSONResponse:
-    """Mono webhook receiver — no auth, validated by Mono-Signature header (TODO: add HMAC verification)."""
-    return JSONResponse(status_code=200, content={"received": True})
+    """Mono webhook receiver — no user auth; validated by the Mono-Webhook-Secret header matching our configured secret."""
+    if not settings.mono_webhook_secret or mono_webhook_secret != settings.mono_webhook_secret:
+        return JSONResponse(status_code=401, content={"received": False, "error": "invalid webhook secret"})
+
+    result = await service.handle_mono_webhook(dto.event, dto.data)
+    return JSONResponse(status_code=200, content={"received": True, **result.data})

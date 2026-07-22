@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     # Mono — bank account linking and transaction sync
     mono_public_key: str = ""
     mono_secret_key: str
+    mono_webhook_secret: str = ""
 
     # Paystack — bank list sync + subscription billing
     paystack_base_url: str = "https://api.paystack.co"
