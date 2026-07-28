@@ -7,6 +7,7 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -28,6 +29,8 @@ def send_email(*, to: str, subject: str, template: str, context: dict) -> None:
     msg["Subject"] = subject
     msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from}>"
     msg["To"] = to
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=settings.smtp_from.split("@")[-1])
     msg.attach(MIMEText(html_body, "html"))
 
     ctx = ssl.create_default_context()
