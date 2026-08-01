@@ -9,3 +9,5 @@ class HomeInsightDto(BaseModel):
     total_income: float
     total_expenses: float
     available_balance: float
+    verified_pct: float
+    self_reported_pct: float

@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.income import IncomeReoccurrence
-from app.common.finance_queries import category_totals, expense_total, income_for_range
+from app.common.finance_queries import category_totals, expense_total, income_for_range, verification_breakdown
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.budget.dto.budget import AllocationResponseDto
@@ -50,13 +50,16 @@ class ClaraService:
         dt_start = datetime(start_date.year, start_date.month, start_date.day)
         dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
 
-        total_spent, category_rows, total_income, (this_week, last_week) = await asyncio.gather(
+        total_spent, category_rows, total_income, (this_week, last_week), (verified_amt, self_reported_amt) = await asyncio.gather(
             expense_total(self._db, user_id, dt_start, dt_end),
             category_totals(self._db, user_id, dt_start, dt_end, limit=3),
             income_for_range(self._db, user_id, start_date, end_date),
             self._week_totals(user_id),
+            verification_breakdown(self._db, user_id, dt_start, dt_end),
         )
         top_categories = [(name, amount) for name, _icon, amount in category_rows]
+        verified_pct = (verified_amt / total_spent * 100) if total_spent > 0 else 0.0
+        self_reported_pct = (self_reported_amt / total_spent * 100) if total_spent > 0 else 0.0
 
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
         insight = _home_insight_rules(
@@ -68,6 +71,8 @@ class ClaraService:
             this_week=this_week,
             last_week=last_week,
         )
+        if total_spent > 0 and self_reported_amt > 0:
+            insight = f"{insight} This month's analysis is based on 🟢 {verified_pct:.0f}% verified transactions and 🟡 {self_reported_pct:.0f}% self-reported expenses."
 
         return Result.ok(HomeInsightDto(
             insight=insight,
@@ -76,6 +81,8 @@ class ClaraService:
             total_income=total_income,
             total_expenses=total_spent,
             available_balance=max(0.0, total_income - total_spent),
+            verified_pct=verified_pct,
+            self_reported_pct=self_reported_pct,
         ))
 
     # ── Post-expense ──────────────────────────────────────────────────────────

@@ -6,7 +6,12 @@ from typing import Literal, Optional
 from pydantic import BaseModel, computed_field, field_validator
 
 from app.common.dto.pagination import PageQueryDto
-from app.common.enums.expense import ExpenseStatus
+from app.common.enums.expense import (
+    LARGE_EXPENSE_EVIDENCE_THRESHOLD,
+    ExpenseStatus,
+    ExpenseVerificationLevel,
+    verification_level_for_source,
+)
 from app.core.config import settings
 
 
@@ -140,6 +145,20 @@ class ExpenseResponseDto(BaseModel):
         if self.file is None:
             return None
         return f"{settings.spaces_cdn_url}/{self.file.folder}/{self.file.file_name}"
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def verification_level(self) -> ExpenseVerificationLevel:
+        return verification_level_for_source(self.source)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def evidence_suggested(self) -> bool:
+        """True for large self-reported expenses — a nudge to attach proof, not a requirement."""
+        return (
+            self.verification_level == ExpenseVerificationLevel.SELF_REPORTED
+            and self.amount >= LARGE_EXPENSE_EVIDENCE_THRESHOLD
+        )
 
     model_config = {"from_attributes": True}
 

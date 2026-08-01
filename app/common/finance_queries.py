@@ -10,6 +10,7 @@ from typing import Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.enums.expense import ExpenseVerificationLevel, verification_level_for_source
 from app.common.enums.income import IncomeReoccurrence
 from app.module.category.schema.category import Category
 from app.module.expense.schema.expense import Expense
@@ -53,6 +54,30 @@ async def category_totals(
         query = query.limit(limit)
     rows = await db.execute(query)
     return [(row.name, row.icon, float(row.total)) for row in rows.all()]
+
+
+async def verification_breakdown(
+    db: AsyncSession, user_id: uuid.UUID, start: datetime, end: datetime
+) -> tuple[float, float]:
+    """Returns (verified_amount, self_reported_amount) for expenses in the range."""
+    rows = await db.execute(
+        select(Expense.source, func.sum(Expense.amount).label("total"))
+        .where(
+            Expense.user_id == user_id,
+            Expense.deleted_at.is_(None),
+            Expense.expense_date >= start,
+            Expense.expense_date <= end,
+        )
+        .group_by(Expense.source)
+    )
+    verified = 0.0
+    self_reported = 0.0
+    for source, total in rows.all():
+        if verification_level_for_source(source) == ExpenseVerificationLevel.VERIFIED:
+            verified += float(total)
+        else:
+            self_reported += float(total)
+    return verified, self_reported
 
 
 async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, end: date) -> float:
