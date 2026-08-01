@@ -10,10 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.income import IncomeReoccurrence
+from app.common.finance_queries import category_totals, expense_total, income_for_range
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.budget.dto.budget import AllocationResponseDto
-from app.module.category.schema.category import Category
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.income.schema.income import Income
@@ -50,12 +50,13 @@ class ClaraService:
         dt_start = datetime(start_date.year, start_date.month, start_date.day)
         dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
 
-        total_spent, top_categories, total_income, (this_week, last_week) = await asyncio.gather(
-            self._expense_total(user_id, dt_start, dt_end),
-            self._top_categories(user_id, dt_start, dt_end),
-            self._income_for_range(user_id, start_date, end_date),
+        total_spent, category_rows, total_income, (this_week, last_week) = await asyncio.gather(
+            expense_total(self._db, user_id, dt_start, dt_end),
+            category_totals(self._db, user_id, dt_start, dt_end, limit=3),
+            income_for_range(self._db, user_id, start_date, end_date),
             self._week_totals(user_id),
         )
+        top_categories = [(name, amount) for name, _icon, amount in category_rows]
 
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
         insight = _home_insight_rules(
@@ -112,7 +113,7 @@ class ClaraService:
             )
 
         month_total, monthly_income = await asyncio.gather(
-            self._expense_total(user_id, month_start, month_end),
+            expense_total(self._db, user_id, month_start, month_end),
             self._monthly_income(user_id, today.year, today.month),
         )
 
@@ -142,17 +143,6 @@ class ClaraService:
 
     # ── Private DB helpers ────────────────────────────────────────────────────
 
-    async def _expense_total(self, user_id: uuid.UUID, start: datetime, end: datetime) -> float:
-        row = await self._db.execute(
-            select(func.sum(Expense.amount)).where(
-                Expense.user_id == user_id,
-                Expense.deleted_at.is_(None),
-                Expense.expense_date >= start,
-                Expense.expense_date <= end,
-            )
-        )
-        return float(row.scalar_one() or 0)
-
     async def _category_total(
         self, user_id: uuid.UUID, category_id: uuid.UUID, start: datetime, end: datetime
     ) -> float:
@@ -168,50 +158,6 @@ class ClaraService:
             )
         )
         return float(row.scalar_one() or 0)
-
-    async def _top_categories(
-        self, user_id: uuid.UUID, start: datetime, end: datetime
-    ) -> list[tuple[str, float]]:
-        rows = await self._db.execute(
-            select(Category.name, func.sum(Expense.amount).label("total"))
-            .join(expense_categories, expense_categories.c.category_id == Category.id)
-            .join(Expense, Expense.id == expense_categories.c.expense_id)
-            .where(
-                Expense.user_id == user_id,
-                Expense.deleted_at.is_(None),
-                Expense.expense_date >= start,
-                Expense.expense_date <= end,
-            )
-            .group_by(Category.name)
-            .order_by(func.sum(Expense.amount).desc())
-            .limit(3)
-        )
-        return [(row.name, float(row.total)) for row in rows.all()]
-
-    async def _income_for_range(self, user_id: uuid.UUID, start: date, end: date) -> float:
-        rows = await self._db.execute(
-            select(Income.amount, Income.reoccurrence, Income.start_date, Income.end_date).where(
-                Income.user_id == user_id,
-                Income.start_date <= end,
-            )
-        )
-        total_days = (end - start).days + 1
-        total = 0.0
-        for amount, reoccurrence, inc_start, inc_end in rows.all():
-            if inc_end is not None and inc_end < start:
-                continue
-            rec = IncomeReoccurrence(reoccurrence)
-            amt = float(amount)
-            if rec == IncomeReoccurrence.ONE_TIME:
-                if start <= inc_start <= end:
-                    total += amt
-            elif rec == IncomeReoccurrence.DAILY:
-                total += amt * total_days
-            elif rec == IncomeReoccurrence.WEEKLY:
-                total += amt * (total_days / 7)
-            elif rec == IncomeReoccurrence.MONTHLY:
-                total += amt * (total_days / 30)
-        return total
 
     async def _monthly_income(self, user_id: uuid.UUID, year: int, month: int) -> float:
         month_start = date(year, month, 1)
@@ -245,8 +191,8 @@ class ClaraService:
         last_start = datetime(last_end.year, last_end.month, last_end.day) - timedelta(days=6)
 
         this_week, last_week = await asyncio.gather(
-            self._expense_total(user_id, this_start, this_end),
-            self._expense_total(user_id, last_start, last_end),
+            expense_total(self._db, user_id, this_start, this_end),
+            expense_total(self._db, user_id, last_start, last_end),
         )
         return this_week, last_week
 

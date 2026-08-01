@@ -26,6 +26,7 @@ from app.module.marketing.router import router as marketing_router
 from app.module.subscription.router import router as subscription_router
 from app.module.subscription.service.billing_job import process_subscription_billing
 from app.module.user.router import router as user_router
+from app.module.wrapped.router import router as wrapped_router
 
 configure_logging(debug=settings.debug)
 
@@ -78,6 +79,7 @@ app.include_router(groups_router, prefix="/api/v1")
 app.include_router(marketing_router, prefix="/api/v1")
 app.include_router(clara_router, prefix="/api/v1")
 app.include_router(subscription_router, prefix="/api/v1")
+app.include_router(wrapped_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
