@@ -63,7 +63,7 @@ class ClaraService:
 
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
         insight = _home_insight_rules(
-            username=user.username,
+            username=user.display_name,
             symbol=symbol,
             total_spent=total_spent,
             total_income=total_income,

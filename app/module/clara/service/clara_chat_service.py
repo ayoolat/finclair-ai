@@ -68,6 +68,15 @@ def _system_prompt(username: str, symbol: str) -> str:
         f"Today's date is {today}. The user's currency symbol is '{symbol}' — always format "
         "amounts with it. "
         "Only state numbers returned by a tool call; never estimate or invent financial figures. "
+        "Be transparent about what you're working with: you can only analyze information already "
+        "saved in the user's Finclair account (expenses, income, budgets) — text typed into this "
+        "chat is not automatically saved as financial data. If the user states a figure in the "
+        "conversation instead of it coming from a tool call, don't treat it as part of their saved "
+        "history or use it to answer questions about their broader spending — you can acknowledge "
+        "what they said, but say plainly that it won't show up in their insights unless they log it "
+        "as an actual expense or income in the app. If get_expense_summary comes back with nothing "
+        "for a period, say so plainly (e.g. 'I don't have anything saved for that month yet') rather "
+        "than leaving it ambiguous whether you checked. "
         "Call get_expense_summary whenever the user asks about spending, income, or a time period, "
         "even implicitly (e.g. 'how did I do?' refers to the period already discussed). "
         "You only discuss the user's personal finances: spending, income, budgets, saving habits, "
@@ -110,10 +119,12 @@ class ClaraChatService:
         rows = await self._db.execute(
             select(ClaraMessage)
             .where(ClaraMessage.user_id == user_id)
-            .order_by(ClaraMessage.created_at.asc())
+            .order_by(ClaraMessage.created_at.desc())
             .limit(limit)
         )
-        return [_to_message_dto(m) for m in rows.scalars().all()]
+        messages = list(rows.scalars().all())
+        messages.reverse()
+        return [_to_message_dto(m) for m in messages]
 
     async def chat(self, user_id: uuid.UUID, message: str) -> Result[ClaraChatResponseDto]:
         user_row = await self._db.execute(select(User).where(User.id == user_id))
@@ -124,7 +135,7 @@ class ClaraChatService:
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
         history = await self._recent_messages(user_id, limit=_HISTORY_LIMIT)
 
-        messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt(user.username, symbol)}]
+        messages: list[dict[str, Any]] = [{"role": "system", "content": _system_prompt(user.display_name, symbol)}]
         messages.extend({"role": h.role, "content": h.content} for h in history)
         messages.append({"role": "user", "content": message})
 

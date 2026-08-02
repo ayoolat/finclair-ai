@@ -33,6 +33,14 @@ class User(AuditMixin, Base):
     auth_provider: Mapped[str] = mapped_column(String(20), nullable=False, default=AuthProvider.EMAIL)
     firebase_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     profile_icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # What the user wants to be called (set during onboarding) — distinct from the
+    # unique login handle in `username`, which can be an unnatural thing to be
+    # addressed by (e.g. "chinonso_test") in conversational surfaces like Clara.
+    preferred_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    @property
+    def display_name(self) -> str:
+        return self.preferred_name or self.username
 
     goals: Mapped[list["UserGoal"]] = relationship(
         "UserGoal",

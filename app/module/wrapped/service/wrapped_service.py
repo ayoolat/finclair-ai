@@ -95,7 +95,7 @@ class WrappedService:
             total_expenses=total_expenses,
         )
         badge = _badge_rules(
-            username=user.username,
+            username=user.display_name,
             months_tracked=months_tracked,
             months_on_track=months_on_track,
             savings_rate=savings_rate,
@@ -110,8 +110,8 @@ class WrappedService:
                 symbol=symbol,
                 cover=WrappedCoverDto(
                     year=year,
-                    username=user.username,
-                    headline=f"Your {year} Money Wrapped is here, {user.username}.",
+                    username=user.display_name,
+                    headline=f"Your {year} Money Wrapped is here, {user.display_name}.",
                 ),
                 income_vs_expense=IncomeExpenseDto(
                     total_income=total_income,
@@ -153,7 +153,7 @@ class WrappedService:
                 tip=tip,
                 badge=badge,
                 share_passport=SharePassportDto(
-                    username=user.username,
+                    username=user.display_name,
                     year=year,
                     total_income=total_income,
                     total_expenses=total_expenses,
