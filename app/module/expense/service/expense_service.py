@@ -265,11 +265,58 @@ class ExpenseService:
     # ── Update ────────────────────────────────────────────────────────────────
 
     async def update(
-        self, user_id: uuid.UUID, expense_id: uuid.UUID, dto: UpdateExpenseDto
+        self,
+        user_id: uuid.UUID,
+        expense_id: uuid.UUID,
+        dto: UpdateExpenseDto,
+        receipt: Optional[UploadFile] = None,
     ) -> Result[ExpenseResponseDto]:
         expense = await self._load(expense_id, user_id)
         if expense is None:
             return Result.fail("Expense not found.", error_code="NOT_FOUND", status_code=404)
+
+        if receipt is not None:
+            # Verify against the new amount if one's being set in this same
+            # call, otherwise against whatever the expense is currently
+            # recorded at — attaching proof shouldn't require also retyping
+            # the amount.
+            claimed_amount = dto.amount if dto.amount is not None else Decimal(str(expense.amount))
+
+            image_bytes = await receipt.read()
+            content_type = receipt.content_type or "image/jpeg"
+
+            try:
+                ocr_result = await self._ocr.parse_receipt(image_bytes, content_type)
+            except ValueError as exc:
+                return Result.fail(str(exc), error_code="INVALID_IMAGE", status_code=400)
+            except RuntimeError as exc:
+                return Result.fail(str(exc), error_code="OCR_FAILED", status_code=502)
+
+            if not _receipt_amount_matches(claimed_amount, ocr_result.total):
+                return Result.fail(
+                    f"The receipt shows {ocr_result.total}, which doesn't match the "
+                    f"{claimed_amount} on this expense. Please correct the amount or upload the matching receipt.",
+                    error_code="RECEIPT_AMOUNT_MISMATCH",
+                    status_code=422,
+                )
+
+            file_name = f"{uuid.uuid4()}.{content_type.split('/')[-1]}"
+            folder = f"receipts/{user_id}"
+            await self._storage.upload(folder, file_name, image_bytes, content_type)
+
+            file_record = File(
+                folder=folder, file_name=file_name, content_type=content_type, size_bytes=len(image_bytes)
+            )
+            self._db.add(file_record)
+            await self._db.flush()
+
+            expense.file_id = file_record.id
+            expense.source = "receipt"
+            expense.extra_data = {
+                **(expense.extra_data or {}),
+                "confidence": ocr_result.confidence,
+                "ai_verified": True,
+            }
 
         if dto.amount is not None:
             expense.amount = dto.amount

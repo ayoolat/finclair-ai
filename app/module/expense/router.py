@@ -100,11 +100,29 @@ async def create_receipt_expense(
 @router.patch("/{expense_id}", response_model=ApiResponse[ExpenseResponseDto])
 async def update_expense(
     expense_id: uuid.UUID,
-    dto: UpdateExpenseDto,
+    dto: str = Form(
+        ...,
+        description="JSON-encoded UpdateExpenseDto. Sent as a form field (not a plain JSON body) so a receipt image can ride along in the same request.",
+    ),
+    receipt: Optional[UploadFile] = File(
+        None,
+        description="Optional receipt image — if provided, it's AI-verified against dto.amount (or the expense's current amount if amount isn't being changed) and the expense is marked verified.",
+    ),
     ctx: AuthContext = Depends(get_auth_context),
     service: ExpenseService = Depends(get_expense_service),
 ) -> JSONResponse:
-    result = await service.update(ctx.user_id, expense_id, dto)
+    try:
+        parsed_dto = UpdateExpenseDto.model_validate_json(dto)
+    except ValidationError as exc:
+        errors = [
+            {"field": ".".join(str(loc) for loc in error["loc"]), "message": error["msg"], "type": error["type"]}
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422, content={"success": False, "message": "Validation failed.", "errors": errors}
+        )
+
+    result = await service.update(ctx.user_id, expense_id, parsed_dto, receipt)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())

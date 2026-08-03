@@ -166,12 +166,6 @@ class ChallengeEntryService:
 
         return Result.ok(ChallengeEntryResponseDto.model_validate(entry), status_code=201)
 
-    # ── Test helpers (settings.debug only) ───────────────────────────────────
-    # Testers shouldn't have to wait real weeks/Fridays to see a streak badge
-    # or a reminder push — these jump the state directly and fire the exact
-    # same badge-award + push calls a real entry would, so what testers see
-    # matches production behavior. Same settings.debug gate this codebase
-    # already uses to expose OTP codes in auth responses.
 
     async def simulate_streak(
         self, user_id: uuid.UUID, challenge_id: uuid.UUID, weeks: int

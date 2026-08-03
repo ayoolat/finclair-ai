@@ -101,18 +101,9 @@ async def seed_financial_goals() -> None:
 
 
 async def seed_categories() -> None:
-    """
-    Seeds the canonical set of default (user_id IS NULL) categories.
 
-    This list used to diverge from an older seed run that had shipped
-    "Food & Dining"/"Housing"/"Transport"/"Others" alongside this list's
-    "Food"/"Rent"/"Transportation"/"Other" — near-duplicate categories with
-    real expenses split across both. That was reconciled once by hand
-    directly against production (merged into the names below, references
-    repointed, no data lost). This is now the single source of truth: keep
-    it as the only place default categories are defined, and don't
-    reintroduce a second name for the same concept.
-    """
+
+   
     from sqlalchemy import select
     from app.module.category.schema.category import Category
 
@@ -137,10 +128,6 @@ async def seed_categories() -> None:
             missing = [c for c in defaults if c["name"] not in existing]
             for c in missing:
                 session.add(Category(**c))
-
-            # Self-heal: backfill icon on any existing default that predates
-            # icons without touching anything a duplicate-cleanup would need
-            # to handle (no merging/deleting here — see the docstring).
             backfilled = []
             for c in defaults:
                 row = existing.get(c["name"])
