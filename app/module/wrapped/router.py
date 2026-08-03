@@ -13,11 +13,12 @@ router = APIRouter(prefix="/wrapped", tags=["wrapped"])
 
 @router.get("", response_model=ApiResponse[WrappedDto])
 async def get_wrapped(
-    year: Optional[int] = Query(None, description="Calendar year to wrap. Defaults to the current year."),
+    year: Optional[int] = Query(None, description="Calendar year of the month to wrap. Defaults to the current year."),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Calendar month (1-12) to wrap. Defaults to the current month."),
     ctx: AuthContext = Depends(get_auth_context),
     service: WrappedService = Depends(get_wrapped_service),
 ) -> JSONResponse:
-    result = await service.get_wrapped(ctx.user_id, year)
+    result = await service.get_wrapped(ctx.user_id, year, month)
     if result.is_err:
         return JSONResponse(
             status_code=result.status_code,

@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 class WrappedCoverDto(BaseModel):
     year: int
+    month: int
     username: str
     headline: str
 
@@ -39,6 +40,7 @@ class TopCategoryDto(BaseModel):
 
 
 class MonthlySavingsDto(BaseModel):
+    year: int
     month: int
     income: float
     expenses: float
@@ -68,6 +70,9 @@ class BadgeDto(BaseModel):
     name: str
     headline: str
     description: str
+    # Consistency signal over the trailing window of months leading up to (and
+    # including) the selected month — not the selected month alone, since a
+    # single month can't show a "streak".
     months_on_track: int
     months_tracked: int
 
@@ -75,6 +80,7 @@ class BadgeDto(BaseModel):
 class SharePassportDto(BaseModel):
     username: str
     year: int
+    month: int
     total_income: float
     total_expenses: float
     total_saved: float
@@ -85,6 +91,7 @@ class SharePassportDto(BaseModel):
 
 class WrappedDto(BaseModel):
     year: int
+    month: int
     start_date: date
     end_date: date
     symbol: str
