@@ -1,7 +1,9 @@
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
@@ -56,11 +58,28 @@ async def get_expense(
 
 @router.post("", response_model=ApiResponse[ExpenseResponseDto])
 async def create_manual_expense(
-    dto: CreateManualExpenseDto,
+    dto: str = Form(
+        ...,
+        description="JSON-encoded CreateManualExpenseDto. Sent as a form field (not a plain JSON body) so a receipt image can ride along in the same request.",
+    ),
+    receipt: Optional[UploadFile] = File(
+        None, description="Optional receipt image — if provided, the entered amount is AI-verified against it and the expense is marked verified."
+    ),
     ctx: AuthContext = Depends(get_auth_context),
     service: ExpenseService = Depends(get_expense_service),
 ) -> JSONResponse:
-    result = await service.create_manual(ctx.user_id, dto)
+    try:
+        parsed_dto = CreateManualExpenseDto.model_validate_json(dto)
+    except ValidationError as exc:
+        errors = [
+            {"field": ".".join(str(loc) for loc in error["loc"]), "message": error["msg"], "type": error["type"]}
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422, content={"success": False, "message": "Validation failed.", "errors": errors}
+        )
+
+    result = await service.create_manual(ctx.user_id, parsed_dto, receipt)
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data, message="Expense recorded.").model_dump())

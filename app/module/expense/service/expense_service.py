@@ -114,11 +114,50 @@ class ExpenseService:
     # ── Create manual ─────────────────────────────────────────────────────────
 
     async def create_manual(
-        self, user_id: uuid.UUID, dto: CreateManualExpenseDto
+        self,
+        user_id: uuid.UUID,
+        dto: CreateManualExpenseDto,
+        receipt: Optional[UploadFile] = None,
     ) -> Result[ExpenseResponseDto]:
         categories = await self._fetch_categories(dto.category_ids)
         if len(categories) != len(dto.category_ids):
             return Result.fail("One or more category IDs are invalid.", error_code="INVALID_CATEGORY", status_code=400)
+
+    
+        source = "manual"
+        extra_data: Optional[dict] = None
+        file_record: Optional[File] = None
+        if receipt is not None:
+            image_bytes = await receipt.read()
+            content_type = receipt.content_type or "image/jpeg"
+
+            try:
+                ocr_result = await self._ocr.parse_receipt(image_bytes, content_type)
+            except ValueError as exc:
+                return Result.fail(str(exc), error_code="INVALID_IMAGE", status_code=400)
+            except RuntimeError as exc:
+                return Result.fail(str(exc), error_code="OCR_FAILED", status_code=502)
+
+            if not _receipt_amount_matches(dto.amount, ocr_result.total):
+                return Result.fail(
+                    f"The receipt shows {ocr_result.total}, which doesn't match the "
+                    f"{dto.amount} you entered. Please correct the amount or upload the matching receipt.",
+                    error_code="RECEIPT_AMOUNT_MISMATCH",
+                    status_code=422,
+                )
+
+            file_name = f"{uuid.uuid4()}.{content_type.split('/')[-1]}"
+            folder = f"receipts/{user_id}"
+            await self._storage.upload(folder, file_name, image_bytes, content_type)
+
+            file_record = File(
+                folder=folder, file_name=file_name, content_type=content_type, size_bytes=len(image_bytes)
+            )
+            self._db.add(file_record)
+            await self._db.flush()
+
+            source = "receipt"
+            extra_data = {"confidence": ocr_result.confidence, "ai_verified": True}
 
         expense = Expense(
             user_id=user_id,
@@ -129,7 +168,9 @@ class ExpenseService:
             type=ExpenseType.DEBIT.value,
             direction=ExpenseDirection.OUTBOUND.value,
             status=ExpenseStatus.COMPLETED.value,
-            source="manual",
+            source=source,
+            file_id=file_record.id if file_record else None,
+            extra_data=extra_data,
             created_by=user_id,
             updated_by=user_id,
         )
@@ -453,6 +494,15 @@ def get_expense_service(
     clara: ClaraService = Depends(get_clara_service),
 ) -> ExpenseService:
     return ExpenseService(db, clara)
+
+
+_RECEIPT_AMOUNT_TOLERANCE_PCT = Decimal("0.01")  # 1% allowed drift (rounding, OCR noise)
+_RECEIPT_AMOUNT_TOLERANCE_MIN = Decimal("0.01")  # minimum absolute tolerance
+
+
+def _receipt_amount_matches(claimed: Decimal, detected: Decimal) -> bool:
+    tolerance = max(_RECEIPT_AMOUNT_TOLERANCE_MIN, claimed * _RECEIPT_AMOUNT_TOLERANCE_PCT)
+    return abs(claimed - detected) <= tolerance
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
