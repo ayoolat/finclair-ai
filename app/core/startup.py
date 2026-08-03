@@ -101,32 +101,60 @@ async def seed_financial_goals() -> None:
 
 
 async def seed_categories() -> None:
+    """
+    Seeds the canonical set of default (user_id IS NULL) categories.
+
+    This list used to diverge from an older seed run that had shipped
+    "Food & Dining"/"Housing"/"Transport"/"Others" alongside this list's
+    "Food"/"Rent"/"Transportation"/"Other" — near-duplicate categories with
+    real expenses split across both. That was reconciled once by hand
+    directly against production (merged into the names below, references
+    repointed, no data lost). This is now the single source of truth: keep
+    it as the only place default categories are defined, and don't
+    reintroduce a second name for the same concept.
+    """
     from sqlalchemy import select
     from app.module.category.schema.category import Category
 
     defaults = [
-        {"name": "Food", "description": "Groceries, restaurants, and food delivery."},
-        {"name": "Transportation", "description": "Fuel, fares, ride-hailing, and vehicle costs."},
-        {"name": "Health", "description": "Medical, pharmacy, and wellness expenses."},
-        {"name": "Shopping", "description": "Clothing, electronics, and general retail."},
-        {"name": "Rent", "description": "Rent, mortgage, and accommodation payments."},
-        {"name": "Entertainment", "description": "Streaming, events, hobbies, and leisure."},
-        {"name": "Investment", "description": "Stocks, savings, and investment contributions."},
-        {"name": "Utilities", "description": "Electricity, water, internet, and phone bills."},
-        {"name": "Education", "description": "Tuition, books, and learning materials."},
-        {"name": "Other", "description": "Miscellaneous expenses not covered elsewhere."},
+        {"name": "Food", "description": "Groceries, restaurants, and food delivery.", "icon": "restaurant_line"},
+        {"name": "Transportation", "description": "Fuel, fares, ride-hailing, and vehicle costs.", "icon": "car_line"},
+        {"name": "Health", "description": "Medical, pharmacy, fitness", "icon": "heart_pulse_line"},
+        {"name": "Shopping", "description": "Clothing, electronics, and general retail.", "icon": "shopping_bag_line"},
+        {"name": "Rent", "description": "Rent, mortgage, and accommodation payments.", "icon": "home_line"},
+        {"name": "Entertainment", "description": "Movies, games, subscriptions", "icon": "movie_line"},
+        {"name": "Investment", "description": "Stocks, savings, and investment contributions.", "icon": "chart_line"},
+        {"name": "Utilities", "description": "Electricity, water, internet, phone", "icon": "flash_line"},
+        {"name": "Education", "description": "Courses, books, and tuition", "icon": "book_line"},
+        {"name": "Other", "description": "Miscellaneous expenses not covered elsewhere.", "icon": "grid_line"},
+        {"name": "Savings", "description": "Savings transfers and investments", "icon": "piggy_bank_line"},
     ]
     try:
         async with AsyncSessionLocal() as session:
-            result = await session.execute(select(Category))
-            existing_names = {row.name for row in result.scalars().all()}
-            missing = [c for c in defaults if c["name"] not in existing_names]
-            if missing:
-                for c in missing:
-                    session.add(Category(**c))
+            result = await session.execute(select(Category).where(Category.user_id.is_(None)))
+            existing = {row.name: row for row in result.scalars().all()}
+
+            missing = [c for c in defaults if c["name"] not in existing]
+            for c in missing:
+                session.add(Category(**c))
+
+            # Self-heal: backfill icon on any existing default that predates
+            # icons without touching anything a duplicate-cleanup would need
+            # to handle (no merging/deleting here — see the docstring).
+            backfilled = []
+            for c in defaults:
+                row = existing.get(c["name"])
+                if row is not None and row.icon is None:
+                    row.icon = c["icon"]
+                    backfilled.append(c["name"])
+
+            if missing or backfilled:
                 await session.commit()
+            if missing:
                 logger.info("Categories      ✓  seeded (%s)", ", ".join(c["name"] for c in missing))
-            else:
+            if backfilled:
+                logger.info("Categories      ✓  icons backfilled (%s)", ", ".join(backfilled))
+            if not missing and not backfilled:
                 logger.info("Categories      ✓  present")
     except Exception as exc:
         logger.error("Categories      ✗  seed FAILED — %s", exc)
