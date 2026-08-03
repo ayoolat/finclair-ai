@@ -43,6 +43,10 @@ class UpdateMemberDto(BaseModel):
         return v
 
 
+class AddMemberDto(BaseModel):
+    user_id: uuid.UUID
+
+
 class GroupMemberResponseDto(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID

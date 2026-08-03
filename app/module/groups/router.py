@@ -13,6 +13,7 @@ from app.common.security.token import decode_token
 from app.database.session import AsyncSessionLocal
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.groups.dto.group import (
+    AddMemberDto,
     CreateGroupDto,
     GroupDetailResponseDto,
     GroupMemberResponseDto,
@@ -122,6 +123,19 @@ async def get_share_link(
 
 
 # ── Members ───────────────────────────────────────────────────────────────────
+
+@router.post("/{group_id}/members", response_model=ApiResponse[GroupMemberResponseDto])
+async def add_member(
+    group_id: uuid.UUID,
+    dto: AddMemberDto,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: GroupMemberService = Depends(get_group_member_service),
+) -> JSONResponse:
+    result = await service.add_member(ctx.user_id, group_id, dto)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=201, content=ApiResponse.ok(data=result.data, message="Friend added to group.").model_dump())
+
 
 @router.put("/{group_id}/members/{member_id}", response_model=ApiResponse[GroupMemberResponseDto])
 async def update_member(

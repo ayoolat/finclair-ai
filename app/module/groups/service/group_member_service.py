@@ -4,22 +4,91 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.enums.friends import FriendshipStatus
 from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus, InviteResponse, RedistributionChoice
 from app.common.response import Result
 from app.database.session import get_db
-from app.module.groups.dto.group import GroupMemberResponseDto, UpdateMemberDto
+from app.module.friends.schema.friendship import Friendship
+from app.module.groups.dto.group import AddMemberDto, GroupMemberResponseDto, UpdateMemberDto
 from app.module.groups.schema.group import Group
 from app.module.groups.schema.group_member import GroupMember
 from app.module.groups.service._helpers import member_to_dto
+from app.module.groups.service.group_service import FREE_MEMBER_LIMIT
 from app.module.user.schema.user import User
 
 
 class GroupMemberService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+
+    async def add_member(
+        self, owner_id: uuid.UUID, group_id: uuid.UUID, dto: AddMemberDto
+    ) -> Result[GroupMemberResponseDto]:
+        if not await self._is_owner(owner_id, group_id):
+            return Result.fail("Group not found or you are not the owner.", status_code=404)
+
+        if dto.user_id == owner_id:
+            return Result.fail("You are already in this group.", status_code=409)
+
+        target_user = await self._db.scalar(select(User).where(User.id == dto.user_id))
+        if target_user is None:
+            return Result.fail("User not found.", status_code=404)
+
+        is_friend = await self._db.scalar(
+            select(Friendship).where(
+                or_(
+                    and_(Friendship.requester_id == owner_id, Friendship.recipient_id == dto.user_id),
+                    and_(Friendship.requester_id == dto.user_id, Friendship.recipient_id == owner_id),
+                ),
+                Friendship.status == FriendshipStatus.ACCEPTED,
+            )
+        )
+        if is_friend is None:
+            return Result.fail(
+                "You can only add accepted friends to a group.", error_code="NOT_FRIENDS", status_code=403
+            )
+
+        existing = await self._db.scalar(
+            select(GroupMember).where(
+                GroupMember.group_id == group_id,
+                GroupMember.user_id == dto.user_id,
+                GroupMember.left_at.is_(None),
+            )
+        )
+        if existing is not None:
+            return Result.fail(
+                "This user is already a member of the group.", error_code="ALREADY_MEMBER", status_code=409
+            )
+
+        active_count = await self._db.scalar(
+            select(func.count()).select_from(GroupMember).where(
+                GroupMember.group_id == group_id, GroupMember.left_at.is_(None)
+            )
+        )
+        if (active_count or 0) >= FREE_MEMBER_LIMIT:
+            return Result.fail(
+                f"You have exceeded the limit of {FREE_MEMBER_LIMIT} maximum friends per group. Upgrade to Clara+ to add more.",
+                status_code=402,
+            )
+
+        # No target_amount here — the owner assigns one afterward via
+        # update_member, same as any other member's target.
+        member = GroupMember(
+            group_id=group_id,
+            user_id=dto.user_id,
+            target_amount=None,
+            contributed_amount=Decimal(0),
+            status=GroupMemberStatus.PENDING,
+            invite_status=GroupInviteStatus.PENDING,
+        )
+        self._db.add(member)
+        await self._db.commit()
+        await self._db.refresh(member)
+
+        return Result.ok(member_to_dto(member, target_user), status_code=201)
 
     async def update_member(
         self, owner_id: uuid.UUID, group_id: uuid.UUID, member_id: uuid.UUID, dto: UpdateMemberDto
