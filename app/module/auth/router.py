@@ -1,6 +1,7 @@
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.auth.dto.auth import (
     ForgotPasscodeDto,
     LoginDto,
+    LogoutDto,
     OnboardingGoalsDto,
     RefreshTokenDto,
     RegisterDto,
@@ -66,10 +68,12 @@ async def refresh(dto: RefreshTokenDto, db: AsyncSession = Depends(get_db)) -> J
 
 @router.post("/logout", response_model=ApiResponse[dict])
 async def logout(
+    dto: Optional[LogoutDto] = Body(default=None),
     db: AsyncSession = Depends(get_db),
     ctx: AuthContext = Depends(get_auth_context),
 ) -> JSONResponse:
-    result = await AuthService(db).logout(ctx.session_id)
+    device_token = dto.device_token if dto else None
+    result = await AuthService(db).logout(ctx.session_id, ctx.user_id, device_token)
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 

@@ -8,7 +8,7 @@ import uuid
 from typing import Optional
 
 from firebase_admin.exceptions import FirebaseError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.email.service import enqueue_otp_email, enqueue_passcode_reset_email
@@ -33,6 +33,7 @@ from app.module.auth.dto.auth import (
 from app.module.auth.service.otp_service import OtpService
 from app.module.auth.service.session_service import SessionService
 from app.module.goal.schema.financial_goal import FinancialGoal
+from app.module.notification.schema.device_token import DeviceToken
 from app.module.user.schema.user import User
 from app.module.user.schema.user_goal import UserGoal
 
@@ -124,13 +125,27 @@ class AuthService:
         await self._db.commit()
         return Result.ok(self._token_pair(new_session.user_id, new_session.id, new_raw))
 
-    async def logout(self, session_id: uuid.UUID) -> Result[dict]:
+    async def logout(
+        self, session_id: uuid.UUID, user_id: uuid.UUID, device_token: Optional[str] = None
+    ) -> Result[dict]:
         await self._sessions.revoke(session_id)
+        if device_token:
+            # Only this device's push registration goes inactive — the user may
+            # still be logged in elsewhere and those devices should keep receiving
+            # pushes. Deactivated, not deleted, so the registration history survives.
+            await self._db.execute(
+                update(DeviceToken)
+                .where(DeviceToken.user_id == user_id, DeviceToken.token == device_token)
+                .values(is_active=False)
+            )
         await self._db.commit()
         return Result.ok({"message": "Logged out."})
 
     async def logout_all(self, user_id: uuid.UUID) -> Result[dict]:
         await self._sessions.revoke_all(user_id)
+        await self._db.execute(
+            update(DeviceToken).where(DeviceToken.user_id == user_id).values(is_active=False)
+        )
         await self._db.commit()
         return Result.ok({"message": "Logged out of all sessions."})
 

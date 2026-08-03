@@ -13,6 +13,9 @@ from app.core.startup import check_database, check_redis, run_startup_checks, sy
 from app.module.auth.router import router as auth_router
 from app.module.bank.router import router as bank_router
 from app.module.budget.router import router as budget_router
+from app.module.budget.service.budget_alert_service import check_budget_health, check_no_spend_weekend
+from app.module.challenge.router import router as challenge_router
+from app.module.challenge.service.reminder_jobs import send_friday_savings_reminders
 from app.module.insight.router import router as insight_router
 from app.module.category.router import router as category_router
 from app.module.clara.router import router as clara_router
@@ -23,6 +26,7 @@ from app.module.goal.router import router as goal_router
 from app.module.groups.router import router as groups_router
 from app.module.income.router import router as income_router
 from app.module.marketing.router import router as marketing_router
+from app.module.notification.router import router as notification_router
 from app.module.subscription.router import router as subscription_router
 from app.module.subscription.service.billing_job import process_subscription_billing
 from app.module.user.router import router as user_router
@@ -36,6 +40,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await run_startup_checks()
     schedule_daily("sync_paystack_banks", sync_paystack_banks)
     schedule_daily("process_subscription_billing", process_subscription_billing)
+    schedule_daily("send_friday_savings_reminders", send_friday_savings_reminders)
+    schedule_daily("check_no_spend_weekend", check_no_spend_weekend)
+    schedule_daily("check_budget_health", check_budget_health)
     yield
 
 
@@ -80,6 +87,8 @@ app.include_router(marketing_router, prefix="/api/v1")
 app.include_router(clara_router, prefix="/api/v1")
 app.include_router(subscription_router, prefix="/api/v1")
 app.include_router(wrapped_router, prefix="/api/v1")
+app.include_router(challenge_router, prefix="/api/v1")
+app.include_router(notification_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])

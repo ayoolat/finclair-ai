@@ -68,6 +68,13 @@ class RefreshTokenDto(BaseModel):
     refresh_token: str
 
 
+class LogoutDto(BaseModel):
+    # The FCM/APNs token of the device logging out. When provided, that device's
+    # push registration is deleted so it stops receiving notifications for this
+    # account — other devices the user is still logged in on are left untouched.
+    device_token: str | None = None
+
+
 class TokenPairResponseDto(BaseModel):
     access_token: str
     refresh_token: str

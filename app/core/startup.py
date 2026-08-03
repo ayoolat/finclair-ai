@@ -216,6 +216,37 @@ _NIGERIAN_BANKS_SEED = [
 ]
 
 
+async def seed_badges() -> None:
+    from sqlalchemy import select
+    from app.module.challenge.schema.badge import Badge
+
+    defaults = [
+        {"key": "first_challenge", "name": "Getting Started", "description": "Started your first savings challenge.", "icon_name": "star", "category": "streak"},
+        {"key": "streak_4_weeks", "name": "1-Month Streak", "description": "Logged savings for 4 Fridays in a row.", "icon_name": "flame", "category": "streak"},
+        {"key": "streak_12_weeks", "name": "3-Month Streak", "description": "Logged savings for 12 Fridays in a row.", "icon_name": "flame", "category": "streak"},
+        {"key": "streak_26_weeks", "name": "6-Month Streak", "description": "Logged savings for 26 Fridays in a row.", "icon_name": "flame", "category": "streak"},
+        {"key": "streak_52_weeks", "name": "1-Year Streak", "description": "Logged savings for 52 Fridays in a row.", "icon_name": "flame", "category": "streak"},
+        {"key": "friday_savings_goal_reached", "name": "Savings Goal Reached", "description": "Hit your Friday Savings Challenge target.", "icon_name": "piggy-bank", "category": "friday_savings"},
+        {"key": "no_spend_weekend", "name": "No-Spend Weekend", "description": "Logged zero expenses over a weekend.", "icon_name": "shield", "category": "no_spend_weekend"},
+        {"key": "budget_hero", "name": "Budget Hero", "description": "Finished the month within your overall budget.", "icon_name": "target", "category": "budget"},
+        {"key": "category_budget_hero", "name": "Category Budget Hero", "description": "Finished the month within a category budget.", "icon_name": "target", "category": "budget"},
+    ]
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Badge.key))
+            existing_keys = {row[0] for row in result.all()}
+            missing = [b for b in defaults if b["key"] not in existing_keys]
+            if missing:
+                for b in missing:
+                    session.add(Badge(**b))
+                await session.commit()
+                logger.info("Badges          ✓  seeded (%s)", ", ".join(b["key"] for b in missing))
+            else:
+                logger.info("Badges          ✓  present")
+    except Exception as exc:
+        logger.error("Badges          ✗  seed FAILED — %s", exc)
+
+
 async def sync_paystack_banks() -> None:
     import asyncio
     from sqlalchemy import select
@@ -311,6 +342,7 @@ async def run_startup_checks() -> None:
     await seed_financial_goals()
     await seed_categories()
     await seed_subscription_plans()
+    await seed_badges()
     await sync_paystack_banks()
     db_ok = await check_database()
     redis_ok = check_redis()

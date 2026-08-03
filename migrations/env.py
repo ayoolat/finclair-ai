@@ -28,6 +28,12 @@ from app.module.groups.schema.group_message import GroupMessage  # noqa: F401
 from app.module.marketing.schema.newsletter import NewsletterSubscriber  # noqa: F401
 from app.module.marketing.schema.waitlist import WaitlistEntry  # noqa: F401
 from app.module.clara.schema.clara_message import ClaraMessage  # noqa: F401
+from app.module.notification.schema.device_token import DeviceToken  # noqa: F401
+from app.module.challenge.schema.challenge import SavingsChallenge  # noqa: F401
+from app.module.challenge.schema.challenge_entry import ChallengeEntry  # noqa: F401
+from app.module.challenge.schema.badge import Badge  # noqa: F401
+from app.module.challenge.schema.user_badge import UserBadge  # noqa: F401
+from app.module.budget.schema.budget_alert import BudgetAlert  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
