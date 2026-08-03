@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from app.common.response import ApiResponse
+from app.core.config import settings
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.notification.dto.notification import DeviceTokenResponseDto, RegisterDeviceTokenDto
 from app.module.notification.service.device_token_service import (
     DeviceTokenService,
     get_device_token_service,
 )
+from app.module.notification.service.push_service import PushService, get_push_service
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -47,3 +49,21 @@ async def unregister_device_token(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(message="Device unregistered.").model_dump())
+
+
+@router.post("/test-push", response_model=ApiResponse[None])
+async def send_test_push(
+    ctx: AuthContext = Depends(get_auth_context),
+    push: PushService = Depends(get_push_service),
+) -> JSONResponse:
+    """Debug only — sends a plain push to the caller's own registered devices, to confirm registration + FCM are wired up before testing anything feature-specific."""
+    if not settings.debug:
+        return JSONResponse(status_code=404, content=ApiResponse.error("Not found.").model_dump())
+
+    await push.send_to_user(
+        ctx.user_id,
+        title="Test notification 🔔",
+        body="If you can see this, push notifications are working.",
+        data={"type": "test"},
+    )
+    return JSONResponse(status_code=200, content=ApiResponse.ok(message="Test push sent (if you have a registered device).").model_dump())

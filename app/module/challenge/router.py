@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.common.dto.pagination import PageQueryDto
@@ -140,3 +140,32 @@ async def list_entries(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=result.data.model_dump())
+
+
+# ── Test helpers (settings.debug only — 404s otherwise) ────────────────────────
+# For testers: see the streak/reminder push notifications without waiting for
+# real Fridays or weeks of real usage.
+
+@router.post("/{challenge_id}/dev/simulate-streak", response_model=ApiResponse[ChallengeResponseDto])
+async def simulate_streak(
+    challenge_id: uuid.UUID,
+    weeks: int = Query(..., ge=1, le=52, description="Jump the streak to this many weeks and fire the same badge/push logic as a real entry."),
+    ctx: AuthContext = Depends(get_auth_context),
+    service: ChallengeEntryService = Depends(get_challenge_entry_service),
+) -> JSONResponse:
+    result = await service.simulate_streak(ctx.user_id, challenge_id, weeks)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message="Streak simulated.").model_dump())
+
+
+@router.post("/{challenge_id}/dev/send-test-reminder", response_model=ApiResponse[None])
+async def send_test_reminder(
+    challenge_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: ChallengeEntryService = Depends(get_challenge_entry_service),
+) -> JSONResponse:
+    result = await service.send_test_reminder(ctx.user_id, challenge_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(message="Test reminder sent.").model_dump())

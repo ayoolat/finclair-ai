@@ -12,8 +12,13 @@ from app.common.enums.challenge import ChallengeStatus, EntryVerificationLevel
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
+from app.core.config import settings
 from app.database.session import get_db
-from app.module.challenge.dto.challenge import ChallengeEntryResponseDto, RecordEntryDto
+from app.module.challenge.dto.challenge import (
+    ChallengeEntryResponseDto,
+    ChallengeResponseDto,
+    RecordEntryDto,
+)
 from app.module.challenge.schema.challenge import SavingsChallenge
 from app.module.challenge.schema.challenge_entry import ChallengeEntry
 from app.module.challenge.service._helpers import iso_week_key, receipt_amount_matches, weeks_between
@@ -160,6 +165,81 @@ class ChallengeEntryService:
             )
 
         return Result.ok(ChallengeEntryResponseDto.model_validate(entry), status_code=201)
+
+    # ── Test helpers (settings.debug only) ───────────────────────────────────
+    # Testers shouldn't have to wait real weeks/Fridays to see a streak badge
+    # or a reminder push — these jump the state directly and fire the exact
+    # same badge-award + push calls a real entry would, so what testers see
+    # matches production behavior. Same settings.debug gate this codebase
+    # already uses to expose OTP codes in auth responses.
+
+    async def simulate_streak(
+        self, user_id: uuid.UUID, challenge_id: uuid.UUID, weeks: int
+    ) -> Result[ChallengeResponseDto]:
+        if not settings.debug:
+            return Result.fail("Not found.", status_code=404)
+        if weeks < 1:
+            return Result.fail("weeks must be at least 1.", status_code=422)
+
+        challenge = await self._db.scalar(
+            select(SavingsChallenge).where(
+                SavingsChallenge.id == challenge_id, SavingsChallenge.user_id == user_id
+            )
+        )
+        if challenge is None:
+            return Result.fail("Challenge not found.", error_code="NOT_FOUND", status_code=404)
+
+        challenge.current_streak = weeks
+        challenge.longest_streak = max(challenge.longest_streak, weeks)
+        challenge.last_entry_week = iso_week_key(date.today())
+
+        newly_awarded_badge = None
+        streak_badge_key = STREAK_BADGE_WEEKS.get(weeks)
+        if streak_badge_key:
+            newly_awarded_badge = await self._badges.award(
+                user_id, streak_badge_key, challenge_id=challenge.id
+            )
+
+        await self._db.commit()
+        await self._db.refresh(challenge)
+
+        if newly_awarded_badge:
+            await self._push.send_to_user(
+                user_id,
+                title=f"🔥 {weeks}-week streak!",
+                body=(
+                    f"You've kept up '{challenge.name}' for {weeks} weeks straight. "
+                    f"New badge: {newly_awarded_badge.name}."
+                ),
+                data={"type": "streak_badge", "challenge_id": str(challenge.id)},
+            )
+
+        return Result.ok(ChallengeResponseDto.model_validate(challenge))
+
+    async def send_test_reminder(self, user_id: uuid.UUID, challenge_id: uuid.UUID) -> Result[None]:
+        if not settings.debug:
+            return Result.fail("Not found.", status_code=404)
+
+        challenge = await self._db.scalar(
+            select(SavingsChallenge).where(
+                SavingsChallenge.id == challenge_id, SavingsChallenge.user_id == user_id
+            )
+        )
+        if challenge is None:
+            return Result.fail("Challenge not found.", error_code="NOT_FOUND", status_code=404)
+
+        body = (
+            f"You're on a {challenge.current_streak}-week streak — log today's savings to keep it alive."
+            if challenge.current_streak > 0
+            else f"Time to save for '{challenge.name}'. Log today's contribution to start your streak."
+        )
+        await self._push.send_to_user(
+            user_id,
+            title="It's Friday! 💰",
+            body=body,
+            data={"type": "friday_reminder", "challenge_id": str(challenge.id)},
+        )
+        return Result.ok(None)
 
     async def list_entries(
         self, user_id: uuid.UUID, challenge_id: uuid.UUID, filters: PageQueryDto
