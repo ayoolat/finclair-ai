@@ -41,6 +41,11 @@ class _ItemSchema(BaseModel):
 
 
 class _ReceiptSchema(BaseModel):
+    # Model's explicit judgment on whether the image is actually a purchase
+    # receipt/invoice at all — lets us reject non-receipts (screenshots,
+    # flyers, unrelated photos) with a clear message instead of them showing
+    # up as a generic "total must be positive" failure.
+    is_receipt: bool
     merchant: Optional[str] = None
     currency: Optional[str] = None
     total: float
@@ -61,15 +66,19 @@ class _ReceiptSchema(BaseModel):
             return None
 
     @model_validator(mode="after")
-    def ensure_total_positive(self) -> "_ReceiptSchema":
-        if self.total <= 0:
+    def ensure_total_positive_when_receipt(self) -> "_ReceiptSchema":
+        if self.is_receipt and self.total <= 0:
             raise ValueError("Extracted total must be positive.")
         return self
 
 
 _SYSTEM_PROMPT = (
     "You are a precise receipt parser for a financial application. "
-    "Extract structured data from the receipt image and return it as JSON matching the provided schema. "
+    "First decide whether the image is actually a purchase receipt or invoice — an itemized proof of "
+    "purchase with a merchant name and a total amount paid. If it is NOT one (e.g. a flyer, poster, "
+    "screenshot of a social media post, or any other unrelated image), set is_receipt to false and leave "
+    "the other fields null/empty. "
+    "If it IS a receipt, set is_receipt to true and extract structured data from it matching the schema. "
     "If a field cannot be determined, use null. "
     "Set confidence to a float between 0.0 (not confident) and 1.0 (fully confident) based on image clarity and extraction quality."
 )
@@ -126,6 +135,7 @@ class OpenAIOcrProvider(OcrProvider):
         data_url = f"data:{content_type};base64,{encoded}"
 
         last_exc: Optional[Exception] = None
+        parsed: Optional[_ReceiptSchema] = None
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
                 parsed = self._call_api(client, data_url)
@@ -135,6 +145,13 @@ class OpenAIOcrProvider(OcrProvider):
                 logger.warning("OCR attempt %d/%d failed: %s", attempt, _MAX_RETRIES, exc)
         else:
             raise RuntimeError(f"Receipt OCR failed after {_MAX_RETRIES} attempts.") from last_exc
+
+        if not parsed.is_receipt:
+            # A content judgment, not a transient failure — retrying the same
+            # image won't change the model's mind, so fail immediately.
+            raise ValueError(
+                "This doesn't look like a receipt. Please upload a clear photo of an itemized purchase receipt."
+            )
 
         def _to_decimal(v: Optional[float]) -> Optional[Decimal]:
             if v is None:
