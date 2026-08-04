@@ -250,6 +250,13 @@ async def seed_badges() -> None:
         {"key": "no_spend_streak_26_weeks", "name": "6-Month No-Spend Streak", "description": "26 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
         {"key": "no_spend_streak_52_weeks", "name": "1-Year No-Spend Streak", "description": "52 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
         {"key": "budget_category_goal_reached", "name": "Budget Category Goal Reached", "description": "Stayed under your spend cap for a budget category challenge.", "icon_name": "target", "category": "budget_category"},
+        {"key": "expense_streak_3_days", "name": "Getting Started", "description": "Logged expenses 3 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_5_days", "name": "Perfect Streak", "description": "Logged expenses 5 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_7_days", "name": "One Week Strong", "description": "Logged expenses 7 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_14_days", "name": "Two Weeks In", "description": "Logged expenses 14 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_30_days", "name": "One Month Streak", "description": "Logged expenses 30 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_60_days", "name": "Two Month Streak", "description": "Logged expenses 60 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "expense_streak_100_days", "name": "Century Streak", "description": "Logged expenses 100 days in a row.", "icon_name": "flame", "category": "expense_streak"},
     ]
     try:
         async with AsyncSessionLocal() as session:

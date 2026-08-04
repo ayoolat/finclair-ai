@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -206,6 +206,23 @@ class ExpenseSummaryQueryDto(BaseModel):
         if v is not None and not 1 <= v <= 12:
             raise ValueError("Month must be between 1 and 12.")
         return v
+
+
+# ── Streak ────────────────────────────────────────────────────────────────────
+
+class ExpenseStreakDayDto(BaseModel):
+    date: date
+    day_label: str   # "Mo", "Tu", ...
+    logged: bool
+    is_today: bool
+
+
+class ExpenseStreakResponseDto(BaseModel):
+    current_streak: int
+    longest_streak: int
+    last_logged_date: Optional[date]
+    logged_today: bool
+    days: list[ExpenseStreakDayDto]
 
 
 class ExpenseFilterDto(PageQueryDto):

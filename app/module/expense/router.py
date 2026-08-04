@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -11,13 +11,26 @@ from app.module.expense.dto.expense import (
     CreateManualExpenseDto,
     ExpenseFilterDto,
     ExpenseResponseDto,
+    ExpenseStreakResponseDto,
     ExpenseSummaryDto,
     ExpenseSummaryQueryDto,
     UpdateExpenseDto,
 )
 from app.module.expense.service.expense_service import ExpenseService, get_expense_service
+from app.module.expense.service.expense_streak_service import ExpenseStreakService, get_expense_streak_service
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
+
+@router.get("/streak", response_model=ApiResponse[ExpenseStreakResponseDto])
+async def get_expense_streak(
+    ctx: AuthContext = Depends(get_auth_context),
+    service: ExpenseStreakService = Depends(get_expense_streak_service),
+) -> JSONResponse:
+    result = await service.get_streak(ctx.user_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 
 @router.get("/summary", response_model=ApiResponse[ExpenseSummaryDto])
@@ -138,3 +151,18 @@ async def delete_expense(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
+
+
+# ── Test helpers (settings.debug only — 404s otherwise) ────────────────────────
+# For testers: preview streak milestone badges/pushes without waiting real days.
+
+@router.post("/streak/dev/simulate", response_model=ApiResponse[ExpenseStreakResponseDto])
+async def simulate_expense_streak(
+    days: int = Query(..., ge=1, le=100, description="Jump the streak to this many days and fire the same badge/push logic as a real log."),
+    ctx: AuthContext = Depends(get_auth_context),
+    service: ExpenseStreakService = Depends(get_expense_streak_service),
+) -> JSONResponse:
+    result = await service.simulate_streak(ctx.user_id, days)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message="Streak simulated.").model_dump())

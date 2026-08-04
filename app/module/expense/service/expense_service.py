@@ -29,17 +29,31 @@ from app.module.expense.dto.expense import (
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.expense.schema.expense_item import ExpenseItem
+from app.module.expense.service.expense_streak_service import (
+    ExpenseStreakService,
+    StreakUpdate,
+    get_expense_streak_service,
+)
 from app.module.file.schema.file import File
 from app.module.income.schema.income import Income
 from app.module.insight.service.clara_service import ClaraService, get_clara_service
+from app.module.notification.service.push_service import PushService, get_push_service
 
 _RECEIPT_LOW_CONFIDENCE = 0.5
 
 
 class ExpenseService:
-    def __init__(self, db: AsyncSession, clara: ClaraService) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        clara: ClaraService,
+        streaks: ExpenseStreakService,
+        push: PushService,
+    ) -> None:
         self._db = db
         self._clara = clara
+        self._streaks = streaks
+        self._push = push
         self._storage = get_storage_provider()
         self._ocr = get_ocr_provider()
 
@@ -193,10 +207,13 @@ class ExpenseService:
                 updated_by=user_id,
             ))
 
+        streak_update = await self._streaks.record_activity(user_id)
+
         await self._db.commit()
         expense = await self._load(expense.id, user_id)  # type: ignore[assignment]
         dto = ExpenseResponseDto.model_validate(expense)
         dto.clara_insight = await self._clara.post_expense_insight(user_id, expense)  # type: ignore[union-attr]
+        await self._notify_streak_milestone(user_id, streak_update)
         return Result.ok(dto, status_code=201)
 
     # ── Create from receipt (OCR) ─────────────────────────────────────────────
@@ -261,8 +278,11 @@ class ExpenseService:
                 updated_by=user_id,
             ))
 
+        streak_update = await self._streaks.record_activity(user_id)
+
         await self._db.commit()
         expense = await self._load(expense.id, user_id)  # type: ignore[assignment]
+        await self._notify_streak_milestone(user_id, streak_update)
         return Result.ok(ExpenseResponseDto.model_validate(expense), status_code=201)  # type: ignore[arg-type]
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -518,6 +538,19 @@ class ExpenseService:
                     total += float(amount) * _multipliers.get(rec, 1)
         return total
 
+    async def _notify_streak_milestone(self, user_id: uuid.UUID, streak_update: StreakUpdate) -> None:
+        if not streak_update.newly_awarded_badge:
+            return
+        await self._push.send_to_user(
+            user_id,
+            title=f"🔥 {streak_update.current_streak}-day streak!",
+            body=(
+                f"You've logged expenses {streak_update.current_streak} days in a row. "
+                f"New badge: {streak_update.newly_awarded_badge.name}."
+            ),
+            data={"type": "expense_streak_badge", "current_streak": str(streak_update.current_streak)},
+        )
+
     async def _load(self, expense_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Expense]:
         result = await self._db.execute(
             select(Expense)
@@ -544,8 +577,10 @@ class ExpenseService:
 def get_expense_service(
     db: AsyncSession = Depends(get_db),
     clara: ClaraService = Depends(get_clara_service),
+    streaks: ExpenseStreakService = Depends(get_expense_streak_service),
+    push: PushService = Depends(get_push_service),
 ) -> ExpenseService:
-    return ExpenseService(db, clara)
+    return ExpenseService(db, clara, streaks, push)
 
 
 _RECEIPT_AMOUNT_TOLERANCE_PCT = Decimal("0.01")  # 1% allowed drift (rounding, OCR noise)
