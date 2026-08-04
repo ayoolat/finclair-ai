@@ -127,8 +127,11 @@ class ExpenseService:
         source = "manual"
         extra_data: Optional[dict] = None
         file_record: Optional[File] = None
-        if receipt is not None:
-            image_bytes = await receipt.read()
+        # Some clients always attach a "receipt" multipart field even when the
+        # user didn't pick a file, sending it with no filename / zero bytes —
+        # `receipt is not None` alone would misfire OCR on that empty upload.
+        image_bytes = await receipt.read() if receipt is not None else b""
+        if image_bytes:
             content_type = receipt.content_type or "image/jpeg"
 
             try:
@@ -275,14 +278,16 @@ class ExpenseService:
         if expense is None:
             return Result.fail("Expense not found.", error_code="NOT_FOUND", status_code=404)
 
-        if receipt is not None:
+        # Some clients always attach a "receipt" multipart field even when the
+        # user didn't pick a file, sending it with no filename / zero bytes —
+        # `receipt is not None` alone would misfire OCR on that empty upload.
+        image_bytes = await receipt.read() if receipt is not None else b""
+        if image_bytes:
             # Verify against the new amount if one's being set in this same
             # call, otherwise against whatever the expense is currently
             # recorded at — attaching proof shouldn't require also retyping
             # the amount.
             claimed_amount = dto.amount if dto.amount is not None else Decimal(str(expense.amount))
-
-            image_bytes = await receipt.read()
             content_type = receipt.content_type or "image/jpeg"
 
             try:

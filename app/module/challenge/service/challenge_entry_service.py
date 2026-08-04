@@ -66,7 +66,12 @@ class ChallengeEntryService:
         if challenge.status != ChallengeStatus.ACTIVE:
             return Result.fail("This challenge is no longer active.", status_code=400)
 
-        if dto.amount is None and receipt is None:
+        # Some clients always attach a "receipt" multipart field even when the
+        # user didn't pick a file, sending it with no filename / zero bytes —
+        # `receipt is not None` alone would misfire OCR on that empty upload.
+        data = await receipt.read() if receipt is not None else b""
+
+        if dto.amount is None and not data:
             return Result.fail(
                 "Enter an amount or upload a bank receipt / bank alert screenshot.",
                 error_code="ENTRY_REQUIRED",
@@ -84,8 +89,7 @@ class ChallengeEntryService:
         file_url: Optional[str] = None
         verification_level = EntryVerificationLevel.SELF_REPORTED
         final_amount = dto.amount
-        if receipt is not None:
-            data = await receipt.read()
+        if data:
             content_type = receipt.content_type or "image/jpeg"
 
             try:
