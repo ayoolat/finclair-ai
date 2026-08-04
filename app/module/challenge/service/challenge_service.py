@@ -5,9 +5,10 @@ from fastapi import Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.enums.challenge import ChallengeStatus
+from app.common.enums.challenge import ChallengeStatus, ChallengeType
 from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
+from app.module.category.schema.category import Category
 from app.module.challenge.dto.challenge import (
     ChallengeFilterDto,
     ChallengeResponseDto,
@@ -16,6 +17,12 @@ from app.module.challenge.dto.challenge import (
 )
 from app.module.challenge.schema.challenge import SavingsChallenge
 from app.module.challenge.service.badge_service import BadgeService, get_badge_service
+
+DEFAULT_CHALLENGE_NAME = {
+    ChallengeType.FRIDAY_SAVINGS: "Friday Savings Challenge",
+    ChallengeType.NO_SPEND: "No-Spend Challenge",
+    ChallengeType.BUDGET_CATEGORY: "Budget Category Challenge",
+}
 
 
 class ChallengeService:
@@ -29,21 +36,29 @@ class ChallengeService:
         existing = await self._db.scalar(
             select(SavingsChallenge).where(
                 SavingsChallenge.user_id == user_id,
+                SavingsChallenge.type == dto.type,
                 SavingsChallenge.status == ChallengeStatus.ACTIVE,
             )
         )
         if existing is not None:
             return Result.fail(
-                "You already have an active savings challenge.",
+                f"You already have an active {dto.type.value.replace('_', ' ')} challenge.",
                 error_code="ACTIVE_CHALLENGE_EXISTS",
                 status_code=409,
             )
 
+        if dto.type == ChallengeType.BUDGET_CATEGORY:
+            category = await self._db.get(Category, dto.target_category_id)
+            if category is None or (category.user_id is not None and category.user_id != user_id):
+                return Result.fail("Category not found.", error_code="NOT_FOUND", status_code=404)
+
         challenge = SavingsChallenge(
             user_id=user_id,
-            name=dto.name,
+            type=dto.type,
+            name=dto.name or DEFAULT_CHALLENGE_NAME[dto.type],
             weekly_target=dto.weekly_target,
             overall_target=dto.overall_target,
+            target_category_id=dto.target_category_id,
             end_date=dto.end_date,
         )
         self._db.add(challenge)

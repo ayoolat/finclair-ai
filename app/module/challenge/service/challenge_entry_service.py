@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
-from app.common.enums.challenge import ChallengeStatus, EntryVerificationLevel
+from app.common.enums.challenge import ChallengeStatus, ChallengeType, EntryVerificationLevel
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
@@ -57,6 +57,12 @@ class ChallengeEntryService:
         )
         if challenge is None:
             return Result.fail("Challenge not found.", error_code="NOT_FOUND", status_code=404)
+        if challenge.type != ChallengeType.FRIDAY_SAVINGS:
+            return Result.fail(
+                "Entries can only be logged for Friday Savings challenges.",
+                error_code="ENTRIES_NOT_SUPPORTED",
+                status_code=400,
+            )
         if challenge.status != ChallengeStatus.ACTIVE:
             return Result.fail("This challenge is no longer active.", status_code=400)
 

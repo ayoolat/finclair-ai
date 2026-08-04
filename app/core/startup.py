@@ -245,6 +245,11 @@ async def seed_badges() -> None:
         {"key": "no_spend_weekend", "name": "No-Spend Weekend", "description": "Logged zero expenses over a weekend.", "icon_name": "shield", "category": "no_spend_weekend"},
         {"key": "budget_hero", "name": "Budget Hero", "description": "Finished the month within your overall budget.", "icon_name": "target", "category": "budget"},
         {"key": "category_budget_hero", "name": "Category Budget Hero", "description": "Finished the month within a category budget.", "icon_name": "target", "category": "budget"},
+        {"key": "no_spend_streak_4_weeks", "name": "1-Month No-Spend Streak", "description": "4 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
+        {"key": "no_spend_streak_12_weeks", "name": "3-Month No-Spend Streak", "description": "12 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
+        {"key": "no_spend_streak_26_weeks", "name": "6-Month No-Spend Streak", "description": "26 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
+        {"key": "no_spend_streak_52_weeks", "name": "1-Year No-Spend Streak", "description": "52 weeks in a row with zero spending.", "icon_name": "flame", "category": "no_spend"},
+        {"key": "budget_category_goal_reached", "name": "Budget Category Goal Reached", "description": "Stayed under your spend cap for a budget category challenge.", "icon_name": "target", "category": "budget_category"},
     ]
     try:
         async with AsyncSessionLocal() as session:

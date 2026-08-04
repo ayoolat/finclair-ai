@@ -16,6 +16,10 @@ from app.module.budget.router import router as budget_router
 from app.module.budget.service.budget_alert_service import check_budget_health, check_no_spend_weekend
 from app.module.challenge.router import router as challenge_router
 from app.module.challenge.service.reminder_jobs import send_friday_savings_reminders
+from app.module.challenge.service.tracking_jobs import (
+    check_budget_category_challenges,
+    check_no_spend_challenges,
+)
 from app.module.insight.router import router as insight_router
 from app.module.category.router import router as category_router
 from app.module.clara.router import router as clara_router
@@ -43,6 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     schedule_daily("send_friday_savings_reminders", send_friday_savings_reminders)
     schedule_daily("check_no_spend_weekend", check_no_spend_weekend)
     schedule_daily("check_budget_health", check_budget_health)
+    schedule_daily("check_no_spend_challenges", check_no_spend_challenges)
+    schedule_daily("check_budget_category_challenges", check_budget_category_challenges)
     yield
 
 

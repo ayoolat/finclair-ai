@@ -2,15 +2,18 @@ from enum import Enum
 
 
 class ChallengeType(str, Enum):
-    # Only one kind today — save something every Friday. Kept as an enum (not a
-    # hardcoded string) so a future challenge type doesn't require a schema change.
     FRIDAY_SAVINGS = "friday_savings"
+    NO_SPEND = "no_spend"
+    BUDGET_CATEGORY = "budget_category"
 
 
 class ChallengeStatus(str, Enum):
     ACTIVE = "active"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    # A budget_category challenge whose period ended over its spend cap —
+    # distinct from CANCELLED since the user didn't end it themselves.
+    FAILED = "failed"
 
 
 class EntryVerificationLevel(str, Enum):

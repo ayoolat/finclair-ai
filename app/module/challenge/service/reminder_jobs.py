@@ -4,7 +4,7 @@ from datetime import date
 
 from sqlalchemy import or_, select
 
-from app.common.enums.challenge import ChallengeStatus
+from app.common.enums.challenge import ChallengeStatus, ChallengeType
 from app.database.session import AsyncSessionLocal
 from app.module.challenge.schema.challenge import SavingsChallenge
 from app.module.challenge.service._helpers import iso_week_key
@@ -20,6 +20,7 @@ async def send_friday_savings_reminders() -> None:
     async with AsyncSessionLocal() as db:
         rows = await db.execute(
             select(SavingsChallenge).where(
+                SavingsChallenge.type == ChallengeType.FRIDAY_SAVINGS,
                 SavingsChallenge.status == ChallengeStatus.ACTIVE,
                 or_(
                     SavingsChallenge.last_entry_week != current_week,

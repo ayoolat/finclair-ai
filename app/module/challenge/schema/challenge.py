@@ -11,15 +11,28 @@ from app.common.enums.challenge import ChallengeStatus, ChallengeType
 from app.database.session import Base
 
 if TYPE_CHECKING:
+    from app.module.category.schema.category import Category
     from app.module.challenge.schema.challenge_entry import ChallengeEntry
     from app.module.user.schema.user import User
 
 
 class SavingsChallenge(Base):
     """
-    A personal savings challenge — e.g. "save something every Friday". One user,
-    one challenge; no group/participant concept. Streak state lives directly on
-    the row since there's exactly one participant (the owner).
+    A personal challenge — one user, one row; no group/participant concept.
+    Covers three types (see ChallengeType), each giving the generic columns
+    below a different meaning:
+
+    - friday_savings: weekly_target/overall_target/total_saved are money;
+      current_streak/longest_streak/last_entry_week track consecutive Fridays
+      with a logged entry (ChallengeEntry rows).
+    - no_spend: only current_streak/longest_streak/last_entry_week are used,
+      tracking consecutive weeks with zero spend (auto-advanced by a
+      scheduled job, no entries). weekly_target/overall_target/total_saved
+      stay null/0; open-ended, no completion.
+    - budget_category: target_category_id + overall_target (the spend cap)
+      + current_period_spent (running spend, auto-updated) are used over a
+      single start_date..end_date period; total_saved/weekly_target/streak
+      fields stay null/0.
     """
 
     __tablename__ = "savings_challenges"
@@ -40,6 +53,10 @@ class SavingsChallenge(Base):
     # ISO "{year}-W{week}" of the last logged entry — used to detect consecutive
     # vs. skipped weeks without being sensitive to which day of the week it is.
     last_entry_week: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    target_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
+    current_period_spent: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ChallengeStatus.ACTIVE)
@@ -51,6 +68,7 @@ class SavingsChallenge(Base):
     )
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    category: Mapped[Optional["Category"]] = relationship("Category", foreign_keys=[target_category_id])
     entries: Mapped[list["ChallengeEntry"]] = relationship(
         "ChallengeEntry", back_populates="challenge", cascade="all, delete-orphan"
     )

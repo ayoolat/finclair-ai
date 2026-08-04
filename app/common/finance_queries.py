@@ -30,6 +30,23 @@ async def expense_total(db: AsyncSession, user_id: uuid.UUID, start: datetime, e
     return float(row.scalar_one() or 0)
 
 
+async def expense_total_for_category(
+    db: AsyncSession, user_id: uuid.UUID, category_id: uuid.UUID, start: datetime, end: datetime
+) -> float:
+    row = await db.execute(
+        select(func.sum(Expense.amount))
+        .join(expense_categories, expense_categories.c.expense_id == Expense.id)
+        .where(
+            Expense.user_id == user_id,
+            Expense.deleted_at.is_(None),
+            Expense.expense_date >= start,
+            Expense.expense_date <= end,
+            expense_categories.c.category_id == category_id,
+        )
+    )
+    return float(row.scalar_one() or 0)
+
+
 async def category_totals(
     db: AsyncSession,
     user_id: uuid.UUID,
