@@ -61,10 +61,14 @@ _TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_app_help",
             "description": (
-                "Get help content explaining how to use and navigate the Finclair app "
-                "(features, screens, how to do things like logging an expense, creating "
-                "a budget, joining a savings group, etc). Use this whenever the user asks "
-                "how to do something in the app or how to find/navigate a feature."
+                "Get help content explaining the Finclair app itself: its screens, buttons, "
+                "features, and terminology (e.g. 'Clara FAB', 'sheet', 'tab bar'), and how to "
+                "do things like logging an expense, creating a budget, or joining a savings "
+                "group. Use this for ANY question about the app as a product — how to do "
+                "something, what a screen/button/feature is or is called, what happens when "
+                "you tap/do something, where to find something, or why something looks a "
+                "certain way. Covers 'how do I...', 'what is...', 'what does...', 'what "
+                "happens if/when I...', and 'where is...' style questions about the app."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -93,9 +97,13 @@ def _system_prompt(username: str, symbol: str) -> str:
         "than leaving it ambiguous whether you checked. "
         "Call get_expense_summary whenever the user asks about spending, income, or a time period, "
         "even implicitly (e.g. 'how did I do?' refers to the period already discussed). "
-        "Call get_app_help whenever the user asks how to do something in the app or how to find "
-        "or navigate a feature — answer strictly from what that tool returns, and if it doesn't "
-        "cover what they asked, say you don't have that help content yet rather than guessing. "
+        "Call get_app_help for ANY question about the app itself, not just explicit 'how do I' "
+        "requests — this includes 'what is [screen/button/feature]', 'what does X do', 'what "
+        "happens if/when I tap/do X', and 'where do I find X'. If a question could plausibly be "
+        "answered by app-help content, call the tool before answering rather than guessing or "
+        "saying you don't know — only fall back to 'I don't have that help content yet' after "
+        "checking the tool and finding it genuinely doesn't cover it. Answer strictly from what "
+        "the tool returns. "
         "Outside of their personal finances (spending, income, budgets, saving habits, financial "
         "advice grounded in their data) and app navigation/how-to questions, if asked about anything "
         "else (general trivia, coding, news, other people, unrelated requests), politely decline in "

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 _CACHE_TTL_SECONDS = 300
-_MAX_CONTENT_CHARS = 8000
+_MAX_CONTENT_CHARS = 60000  # ~15k tokens — well under gpt-4o-mini's context, with headroom as the doc grows
 
 _drive_service = None
 _cache_content: str = ""
