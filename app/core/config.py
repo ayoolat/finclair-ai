@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Firebase — social auth (Google & Apple)
     firebase_credentials_json: str = ""
 
+    # Google service account — Clara's app-help Google Doc
+    google_service_account_json: str = ""
+    clara_help_doc_id: str = ""
+
     # Digital Ocean Spaces — file storage
     storage_provider: str = "spaces"
     spaces_key: str

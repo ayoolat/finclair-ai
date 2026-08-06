@@ -10,6 +10,7 @@ from openai import OpenAI
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.clients.google_docs_client import get_app_help_content
 from app.common.clients.openai_client import get_openai_client
 from app.common.dto.pagination import PageQueryDto
 from app.common.response import PaginatedResponse, Result
@@ -54,7 +55,20 @@ _TOOLS: list[dict[str, Any]] = [
                 "required": [],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_app_help",
+            "description": (
+                "Get help content explaining how to use and navigate the Finclair app "
+                "(features, screens, how to do things like logging an expense, creating "
+                "a budget, joining a savings group, etc). Use this whenever the user asks "
+                "how to do something in the app or how to find/navigate a feature."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -79,10 +93,14 @@ def _system_prompt(username: str, symbol: str) -> str:
         "than leaving it ambiguous whether you checked. "
         "Call get_expense_summary whenever the user asks about spending, income, or a time period, "
         "even implicitly (e.g. 'how did I do?' refers to the period already discussed). "
-        "You only discuss the user's personal finances: spending, income, budgets, saving habits, "
-        "and financial advice grounded in their data. If asked about anything else (general trivia, "
-        "coding, news, other people, unrelated requests), politely decline in one short sentence and "
-        "steer the conversation back to their finances — do not answer the off-topic question."
+        "Call get_app_help whenever the user asks how to do something in the app or how to find "
+        "or navigate a feature — answer strictly from what that tool returns, and if it doesn't "
+        "cover what they asked, say you don't have that help content yet rather than guessing. "
+        "Outside of their personal finances (spending, income, budgets, saving habits, financial "
+        "advice grounded in their data) and app navigation/how-to questions, if asked about anything "
+        "else (general trivia, coding, news, other people, unrelated requests), politely decline in "
+        "one short sentence and steer the conversation back to their finances or the app — do not "
+        "answer the off-topic question."
     )
 
 
@@ -205,13 +223,19 @@ class ClaraChatService:
     async def _run_tool(
         self, user_id: uuid.UUID, name: str, raw_arguments: str
     ) -> tuple[str, Optional[ExpenseSummaryDto]]:
-        if name != "get_expense_summary":
-            return json.dumps({"error": f"Unknown tool '{name}'."}), None
-
         try:
             args = json.loads(raw_arguments) if raw_arguments else {}
         except json.JSONDecodeError:
             args = {}
+
+        if name == "get_app_help":
+            content = await asyncio.to_thread(get_app_help_content)
+            if not content:
+                return json.dumps({"error": "No app-help content is available yet."}), None
+            return json.dumps({"app_help": content}), None
+
+        if name != "get_expense_summary":
+            return json.dumps({"error": f"Unknown tool '{name}'."}), None
 
         result = await self._expenses.get_summary(
             user_id, year=args.get("year"), month=args.get("month")
