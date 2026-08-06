@@ -80,6 +80,7 @@ def member_to_dto(member: GroupMember, user: User) -> GroupMemberResponseDto:
         id=member.id,
         user_id=member.user_id,
         username=user.username,
+        profile_icon=user.profile_icon,
         status=GroupMemberStatus(member.status),
         invite_status=GroupInviteStatus(member.invite_status),
         target_amount=Decimal(str(member.target_amount)) if member.target_amount is not None else None,

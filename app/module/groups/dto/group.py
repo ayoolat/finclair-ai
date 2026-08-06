@@ -51,6 +51,7 @@ class GroupMemberResponseDto(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     username: str
+    profile_icon: Optional[str] = None
     status: GroupMemberStatus
     invite_status: GroupInviteStatus
     target_amount: Optional[Decimal]

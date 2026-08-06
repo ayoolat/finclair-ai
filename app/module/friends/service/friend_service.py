@@ -156,6 +156,7 @@ class FriendService:
             friend_id=friend_id,
             friend_username=friend.username if friend else "",
             friend_email=friend.email if friend else "",
+            friend_profile_icon=friend.profile_icon if friend else None,
         )
 
 
