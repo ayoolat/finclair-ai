@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Optional
 
@@ -24,6 +25,7 @@ from app.module.auth.dto.auth import (
 from app.module.auth.service.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/register", response_model=ApiResponse[dict])
@@ -102,9 +104,17 @@ async def reset_passcode(dto: ResetPasscodeDto, db: AsyncSession = Depends(get_d
 
 @router.post("/social", response_model=ApiResponse[TokenPairResponseDto])
 async def social_auth(dto: SocialAuthDto, db: AsyncSession = Depends(get_db)) -> JSONResponse:
-    result = await AuthService(db).social_auth(dto)
+    token_len = len(dto.firebase_token) if dto.firebase_token else 0
+    logger.info("social_auth: request received, token_len=%d", token_len)
+    try:
+        result = await AuthService(db).social_auth(dto)
+    except Exception:
+        logger.exception("social_auth: exception escaped service layer")
+        raise
     if result.is_err:
+        logger.warning("social_auth: returning status=%s error_code=%s message=%r", result.status_code, result.error_code, result.error)
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    logger.info("social_auth: success status=200")
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data, message="Authenticated.").model_dump())
 
 
