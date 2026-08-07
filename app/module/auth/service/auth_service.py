@@ -212,9 +212,8 @@ class AuthService:
         if not email:
             return Result.fail("Social account has no email address.", error_code="NO_EMAIL", status_code=400)
 
-        provider = AuthProvider.APPLE if any(
-            p.get("provider_id", "").startswith("apple") for p in claims.get("firebase", {}).get("identities", {}).values() if isinstance(p, list)
-        ) else AuthProvider.GOOGLE
+        sign_in_provider = claims.get("firebase", {}).get("sign_in_provider", "")
+        provider = AuthProvider.APPLE if sign_in_provider.startswith("apple") else AuthProvider.GOOGLE
 
         user = await self._get_user_by_email(email)
 
