@@ -3,6 +3,7 @@ Shared read queries over expenses/income, used by any feature that needs a
 financial summary over a date range (Clara insights, Money Wrapped, etc).
 """
 
+import calendar
 import uuid
 from datetime import date, datetime
 from typing import Optional
@@ -97,6 +98,31 @@ async def verification_breakdown(
     return verified, self_reported
 
 
+def _monthly_income_for_range(amt: float, start: date, end: date, inc_start: date, inc_end: Optional[date]) -> float:
+    """Prorate a MONTHLY income amount against [start, end] using each calendar
+    month's actual day count, so a full-calendar-month query returns the exact
+    configured amount instead of drifting with month length (28-31 days)."""
+    total = 0.0
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        days_in_month = calendar.monthrange(year, month)[1]
+        month_start = date(year, month, 1)
+        month_end = date(year, month, days_in_month)
+
+        period_start = max(month_start, start, inc_start)
+        period_end = min(month_end, end, inc_end) if inc_end is not None else min(month_end, end)
+
+        if period_start <= period_end:
+            overlap_days = (period_end - period_start).days + 1
+            total += amt * (overlap_days / days_in_month)
+
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+    return total
+
+
 async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, end: date) -> float:
     rows = await db.execute(
         select(Income.amount, Income.reoccurrence, Income.start_date, Income.end_date).where(
@@ -119,5 +145,5 @@ async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, en
         elif rec == IncomeReoccurrence.WEEKLY:
             total += amt * (total_days / 7)
         elif rec == IncomeReoccurrence.MONTHLY:
-            total += amt * (total_days / 30)
+            total += _monthly_income_for_range(amt, start, end, inc_start, inc_end)
     return total
