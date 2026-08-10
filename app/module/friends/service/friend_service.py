@@ -22,7 +22,7 @@ class FriendService:
         self, query: str, current_user_id: uuid.UUID, filters: PageQueryDto
     ) -> Result[PaginatedResponse[UserSearchResultDto]]:
         base = select(User).where(
-            User.username.ilike(f"%{query}%"),
+            User.username.ilike(f"{query}%"),
             User.id != current_user_id,
             User.is_active.is_(True),
         )
