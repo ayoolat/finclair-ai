@@ -10,21 +10,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
+from app.common.enums.notification import NotificationType
 from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.bank.dto.bank import BankResponseDto, LinkBankDto
 from app.module.bank.schema.bank import Bank
 from app.module.bank.service.mono_service import MonoService, get_mono_service
 from app.module.expense.schema.expense import Expense
+from app.module.notification.service.notification_service import NotificationService, get_notification_service
 from app.module.paystack_bank.schema.paystack_bank import PaystackBank
 
 logger = logging.getLogger(__name__)
 
 
 class BankService:
-    def __init__(self, db: AsyncSession, mono: MonoService) -> None:
+    def __init__(self, db: AsyncSession, mono: MonoService, notifications: NotificationService) -> None:
         self._db = db
         self._mono = mono
+        self._notifications = notifications
 
     # ── List user banks ───────────────────────────────────────────────────────
 
@@ -112,6 +115,17 @@ class BankService:
                 return Result.ok({"handled": False, "event": event})
 
             logger.info("Mono webhook %s: synced bank_id=%s", event, bank.id)
+
+            synced = sync_result.data["synced"]
+            if synced > 0:
+                await self._notifications.notify(
+                    bank.user_id,
+                    NotificationType.BANK_SYNC_COMPLETED,
+                    title="Bank sync complete",
+                    body=f"{bank.name} synced — {synced} new transaction{'s' if synced != 1 else ''} added.",
+                    data={"bank_id": str(bank.id), "synced": synced},
+                )
+
             return Result.ok({"handled": True, "event": event, **sync_result.data})
 
         logger.info("Mono webhook %s: no handler, acknowledged", event)
@@ -231,5 +245,6 @@ class BankService:
 def get_bank_service(
     db: AsyncSession = Depends(get_db),
     mono: MonoService = Depends(get_mono_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ) -> BankService:
-    return BankService(db, mono)
+    return BankService(db, mono, notifications)

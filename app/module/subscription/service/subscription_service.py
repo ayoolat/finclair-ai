@@ -7,10 +7,12 @@ from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.enums.notification import NotificationType
 from app.common.enums.subscription import SubscriptionStatus
 from app.common.payment.factory import get_payment_provider
 from app.common.response import Result
 from app.database.session import get_db
+from app.module.notification.service.notification_service import NotificationService, get_notification_service
 from app.module.subscription.dto.subscription import (
     PlanDto,
     PlansResponseDto,
@@ -29,8 +31,9 @@ _ACTIVE_STATUSES = {SubscriptionStatus.TRIALING, SubscriptionStatus.ACTIVE, Subs
 
 
 class SubscriptionService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifications: NotificationService) -> None:
         self._db = db
+        self._notifications = notifications
 
     async def get_plans(self) -> Result[PlansResponseDto]:
         result = await self._db.execute(
@@ -131,6 +134,15 @@ class SubscriptionService:
         )
         await self._db.commit()
         await self._db.refresh(subscription)
+
+        await self._notifications.notify(
+            user_id,
+            NotificationType.SUBSCRIPTION_ACTIVATED,
+            title="Subscription activated",
+            body=f"Your {plan.name} plan is now active.",
+            data={"plan_code": plan.code, "status": status.value},
+        )
+
         return Result.ok(SubscriptionDto.model_validate(subscription))
 
     async def cancel(self, user_id: uuid.UUID) -> Result[SubscriptionDto]:
@@ -174,5 +186,8 @@ class SubscriptionService:
         return result.scalar_one_or_none()
 
 
-def get_subscription_service(db: AsyncSession = Depends(get_db)) -> SubscriptionService:
-    return SubscriptionService(db)
+def get_subscription_service(
+    db: AsyncSession = Depends(get_db),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> SubscriptionService:
+    return SubscriptionService(db, notifications)

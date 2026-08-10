@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.friends import FriendshipStatus
 from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus, InviteResponse, RedistributionChoice
+from app.common.enums.notification import NotificationType
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.friends.schema.friendship import Friendship
@@ -17,17 +18,20 @@ from app.module.groups.schema.group import Group
 from app.module.groups.schema.group_member import GroupMember
 from app.module.groups.service._helpers import member_to_dto
 from app.module.groups.service.group_service import FREE_MEMBER_LIMIT
+from app.module.notification.service.notification_service import NotificationService, get_notification_service
 from app.module.user.schema.user import User
 
 
 class GroupMemberService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifications: NotificationService) -> None:
         self._db = db
+        self._notifications = notifications
 
     async def add_member(
         self, owner_id: uuid.UUID, group_id: uuid.UUID, dto: AddMemberDto
     ) -> Result[GroupMemberResponseDto]:
-        if not await self._is_owner(owner_id, group_id):
+        group = await self._db.scalar(select(Group).where(Group.id == group_id, Group.owner_id == owner_id))
+        if group is None:
             return Result.fail("Group not found or you are not the owner.", status_code=404)
 
         if dto.user_id == owner_id:
@@ -87,6 +91,14 @@ class GroupMemberService:
         self._db.add(member)
         await self._db.commit()
         await self._db.refresh(member)
+
+        await self._notifications.notify(
+            dto.user_id,
+            NotificationType.GROUP_INVITE,
+            title="Group invite",
+            body=f"You've been added to \"{group.name}\".",
+            data={"group_id": str(group_id), "member_id": str(member.id)},
+        )
 
         return Result.ok(member_to_dto(member, target_user), status_code=201)
 
@@ -232,5 +244,8 @@ class GroupMemberService:
         )
 
 
-def get_group_member_service(db: AsyncSession = Depends(get_db)) -> GroupMemberService:
-    return GroupMemberService(db)
+def get_group_member_service(
+    db: AsyncSession = Depends(get_db),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> GroupMemberService:
+    return GroupMemberService(db, notifications)

@@ -7,16 +7,19 @@ from sqlalchemy.orm import selectinload
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.enums.friends import FriendshipStatus
+from app.common.enums.notification import NotificationType
 from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.friends.dto.friend import FriendshipResponseDto, UserSearchResultDto
 from app.module.friends.schema.friendship import Friendship
+from app.module.notification.service.notification_service import NotificationService, get_notification_service
 from app.module.user.schema.user import User
 
 
 class FriendService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifications: NotificationService) -> None:
         self._db = db
+        self._notifications = notifications
 
     async def search_users(
         self, query: str, current_user_id: uuid.UUID, filters: PageQueryDto
@@ -65,7 +68,17 @@ class FriendService:
             .options(selectinload(Friendship.requester), selectinload(Friendship.recipient))
             .where(Friendship.id == friendship.id)
         )
-        return Result.ok(self._to_dto(loaded.scalar_one(), requester_id), status_code=201)
+        friendship = loaded.scalar_one()
+
+        await self._notifications.notify(
+            recipient_id,
+            NotificationType.FRIEND_INVITE,
+            title="New friend request",
+            body=f"{friendship.requester.display_name} wants to be friends.",
+            data={"friendship_id": str(friendship.id), "requester_id": str(requester_id)},
+        )
+
+        return Result.ok(self._to_dto(friendship, requester_id), status_code=201)
 
     async def list_invites(
         self, user_id: uuid.UUID, filters: PageQueryDto
@@ -160,5 +173,8 @@ class FriendService:
         )
 
 
-def get_friend_service(db: AsyncSession = Depends(get_db)) -> FriendService:
-    return FriendService(db)
+def get_friend_service(
+    db: AsyncSession = Depends(get_db),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> FriendService:
+    return FriendService(db, notifications)

@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from app.common.enums.notification import NotificationType
 from app.common.finance_queries import expense_total
 from app.database.session import AsyncSessionLocal
 from app.module.budget.schema.budget import Budget
@@ -27,6 +28,7 @@ from app.module.budget.schema.budget_alert import BudgetAlert
 from app.module.challenge.service.badge_service import BadgeService
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
+from app.module.notification.service.notification_service import NotificationService
 from app.module.notification.service.push_service import PushService
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,7 @@ async def check_budget_health() -> None:
     today = date.today()
     async with AsyncSessionLocal() as db:
         push = PushService(db)
+        notifications = NotificationService(db, push)
         badges = BadgeService(db)
 
         active_rows = await db.execute(
@@ -89,11 +92,11 @@ async def check_budget_health() -> None:
         )
         for budget in active_rows.scalars().all():
             spent = await _budget_spent(db, budget)
-            await _maybe_near_limit(db, push, budget, None, "your overall budget", spent, float(budget.amount_allocated))
+            await _maybe_near_limit(db, notifications, budget, None, "your overall budget", spent, float(budget.amount_allocated))
             for alloc in budget.allocations:
                 cat_spent = await _category_spent(db, budget, alloc.category_id)
                 await _maybe_near_limit(
-                    db, push, budget, alloc.category_id, alloc.category.name, cat_spent, float(alloc.amount_allocated)
+                    db, notifications, budget, alloc.category_id, alloc.category.name, cat_spent, float(alloc.amount_allocated)
                 )
 
         ended_rows = await db.execute(
@@ -154,18 +157,21 @@ async def _alert_exists(db, budget_id, category_id, alert_type: str) -> bool:
     return row.first() is not None
 
 
-async def _maybe_near_limit(db, push: PushService, budget: Budget, category_id, label: str, spent: float, allocated: float) -> None:
+async def _maybe_near_limit(
+    db, notifications: NotificationService, budget: Budget, category_id, label: str, spent: float, allocated: float
+) -> None:
     if allocated <= 0 or spent / allocated < NEAR_LIMIT_THRESHOLD:
         return
     if await _alert_exists(db, budget.id, category_id, "near_limit"):
         return
 
     pct = spent / allocated * 100
-    await push.send_to_user(
+    await notifications.notify(
         budget.user_id,
+        NotificationType.BUDGET_NEAR_LIMIT,
         title="Approaching your budget limit",
         body=f"You've used {pct:.0f}% of {label} this month.",
-        data={"type": "budget_near_limit"},
+        data={"budget_id": str(budget.id), "category_id": str(category_id) if category_id else None},
     )
     db.add(BudgetAlert(budget_id=budget.id, category_id=category_id, alert_type="near_limit"))
 
