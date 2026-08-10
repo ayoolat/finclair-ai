@@ -8,21 +8,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.enums.groups import GroupInviteStatus, GroupMemberStatus
+from app.common.enums.notification import NotificationType
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginatedResponse, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.groups.dto.group import RecordSavingsDto, SavingsEntryResponseDto
+from app.module.groups.schema.group import Group
 from app.module.groups.schema.group_member import GroupMember
 from app.module.groups.schema.group_savings_entry import GroupSavingsEntry
 from app.module.groups.service._helpers import receipt_amount_matches
+from app.module.notification.service.notification_service import NotificationService, get_notification_service
+from app.module.user.schema.user import User
 
 
 class GroupSavingsService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifications: NotificationService) -> None:
         self._db = db
         self._storage = get_storage_provider()
         self._ocr = get_ocr_provider()
+        self._notifications = notifications
 
     async def record_savings(
         self,
@@ -79,6 +84,9 @@ class GroupSavingsService:
         self._db.add(entry)
         await self._db.commit()
         await self._db.refresh(entry)
+
+        await self._notify_other_members(user_id, group_id, dto.amount)
+
         return Result.ok(SavingsEntryResponseDto.model_validate(entry), status_code=201)
 
     async def list_savings(
@@ -109,6 +117,32 @@ class GroupSavingsService:
             )
         )
 
+    async def _notify_other_members(self, actor_id: uuid.UUID, group_id: uuid.UUID, amount: Decimal) -> None:
+        group = await self._db.scalar(select(Group).where(Group.id == group_id))
+        actor = await self._db.scalar(select(User).where(User.id == actor_id))
+        if group is None or actor is None:
+            return
 
-def get_group_savings_service(db: AsyncSession = Depends(get_db)) -> GroupSavingsService:
-    return GroupSavingsService(db)
+        recipient_rows = await self._db.execute(
+            select(GroupMember.user_id).where(
+                GroupMember.group_id == group_id,
+                GroupMember.user_id != actor_id,
+                GroupMember.left_at.is_(None),
+                GroupMember.invite_status == GroupInviteStatus.ACCEPTED,
+            )
+        )
+        for (recipient_id,) in recipient_rows.all():
+            await self._notifications.notify(
+                recipient_id,
+                NotificationType.GROUP_ACTIVITY,
+                title="Group activity",
+                body=f"{actor.display_name} added {amount:,.2f} to \"{group.name}\".",
+                data={"group_id": str(group_id), "actor_id": str(actor_id)},
+            )
+
+
+def get_group_savings_service(
+    db: AsyncSession = Depends(get_db),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> GroupSavingsService:
+    return GroupSavingsService(db, notifications)
