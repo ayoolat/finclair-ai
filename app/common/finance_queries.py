@@ -5,7 +5,7 @@ financial summary over a date range (Clara insights, Money Wrapped, etc).
 
 import calendar
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -98,23 +98,37 @@ async def verification_breakdown(
     return verified, self_reported
 
 
+def _occurrence_count(step_days: int, start: date, end: date, inc_start: date, inc_end: Optional[date]) -> int:
+    """Counts recurring-payment dates spaced `step_days` apart from inc_start that fall
+    within [start, end] ∩ [inc_start, inc_end] — each occurrence is a discrete, full payment."""
+    range_start = max(start, inc_start)
+    range_end = min(end, inc_end) if inc_end is not None else end
+    if range_start > range_end:
+        return 0
+
+    offset = (range_start - inc_start).days
+    remainder = offset % step_days
+    first_offset = offset if remainder == 0 else offset + (step_days - remainder)
+    first_occurrence = inc_start + timedelta(days=first_offset)
+    if first_occurrence > range_end:
+        return 0
+
+    return (range_end - first_occurrence).days // step_days + 1
+
+
 def _monthly_income_for_range(amt: float, start: date, end: date, inc_start: date, inc_end: Optional[date]) -> float:
-    """Prorate a MONTHLY income amount against [start, end] using each calendar
-    month's actual day count, so a full-calendar-month query returns the exact
-    configured amount instead of drifting with month length (28-31 days)."""
+    """Counts the full amount once for each monthly anniversary of inc_start that falls
+    within [start, end] — a monthly income is a discrete payment, not a continuous accrual,
+    so a full-month query returns the exact configured amount per occurrence rather than a
+    day-prorated fraction."""
     total = 0.0
-    year, month = start.year, start.month
+    year, month = max((start.year, start.month), (inc_start.year, inc_start.month))
     while (year, month) <= (end.year, end.month):
         days_in_month = calendar.monthrange(year, month)[1]
-        month_start = date(year, month, 1)
-        month_end = date(year, month, days_in_month)
+        occurrence = date(year, month, min(inc_start.day, days_in_month))
 
-        period_start = max(month_start, start, inc_start)
-        period_end = min(month_end, end, inc_end) if inc_end is not None else min(month_end, end)
-
-        if period_start <= period_end:
-            overlap_days = (period_end - period_start).days + 1
-            total += amt * (overlap_days / days_in_month)
+        if start <= occurrence <= end and (inc_end is None or occurrence <= inc_end):
+            total += amt
 
         if month == 12:
             year, month = year + 1, 1
@@ -130,7 +144,6 @@ async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, en
             Income.start_date <= end,
         )
     )
-    total_days = (end - start).days + 1
     total = 0.0
     for amount, reoccurrence, inc_start, inc_end in rows.all():
         if inc_end is not None and inc_end < start:
@@ -141,9 +154,12 @@ async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, en
             if start <= inc_start <= end:
                 total += amt
         elif rec == IncomeReoccurrence.DAILY:
-            total += amt * total_days
+            range_start = max(start, inc_start)
+            range_end = min(end, inc_end) if inc_end is not None else end
+            if range_start <= range_end:
+                total += amt * ((range_end - range_start).days + 1)
         elif rec == IncomeReoccurrence.WEEKLY:
-            total += amt * (total_days / 7)
+            total += amt * _occurrence_count(7, start, end, inc_start, inc_end)
         elif rec == IncomeReoccurrence.MONTHLY:
             total += _monthly_income_for_range(amt, start, end, inc_start, inc_end)
     return total
