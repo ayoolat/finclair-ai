@@ -41,10 +41,6 @@ class _ItemSchema(BaseModel):
 
 
 class _ReceiptSchema(BaseModel):
-    # Model's explicit judgment on whether the image is actually a purchase
-    # receipt/invoice at all — lets us reject non-receipts (screenshots,
-    # flyers, unrelated photos) with a clear message instead of them showing
-    # up as a generic "total must be positive" failure.
     is_receipt: bool
     merchant: Optional[str] = None
     currency: Optional[str] = None
