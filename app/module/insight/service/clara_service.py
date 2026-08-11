@@ -10,7 +10,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.income import IncomeReoccurrence
-from app.common.finance_queries import category_totals, expense_total, income_for_range, verification_breakdown
+from app.common.finance_queries import (
+    category_totals,
+    current_income_period,
+    expense_total,
+    income_for_range,
+    verification_breakdown,
+)
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.budget.dto.budget import AllocationResponseDto
@@ -39,10 +45,13 @@ class ClaraService:
             return Result.fail("User not found.", error_code="NOT_FOUND", status_code=404)
 
         today = date.today()
-        if start_date is None:
-            start_date = date(today.year, today.month, 1)
-        if end_date is None:
-            end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+        if start_date is None and end_date is None:
+            start_date, end_date = await self._current_income_cycle(user_id, today)
+        else:
+            if start_date is None:
+                start_date = date(today.year, today.month, 1)
+            if end_date is None:
+                end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
 
         if end_date < start_date:
             return Result.fail("end_date must be on or after start_date.", error_code="INVALID_RANGE", status_code=400)
@@ -84,6 +93,35 @@ class ClaraService:
             verified_pct=verified_pct,
             self_reported_pct=self_reported_pct,
         ))
+
+    async def _current_income_cycle(self, user_id: uuid.UUID, today: date) -> tuple[date, date]:
+        """The user's current income cycle window: MONTHLY resets on the 1st of the month,
+        WEEKLY resets on Monday — clipped to the income's start_date/end_date so the first
+        (and last) cycle don't extend beyond when the income is actually active."""
+        calendar_month = (
+            date(today.year, today.month, 1),
+            date(today.year, today.month, calendar.monthrange(today.year, today.month)[1]),
+        )
+
+        result = await self._db.execute(
+            select(Income.reoccurrence, Income.start_date, Income.end_date)
+            .where(Income.user_id == user_id, Income.start_date <= today)
+            .order_by(Income.start_date.desc())
+            .limit(1)
+        )
+        row = result.first()
+        if row is None:
+            return calendar_month
+
+        reoccurrence, inc_start, inc_end = row
+        rec = IncomeReoccurrence(reoccurrence)
+        if rec == IncomeReoccurrence.ONE_TIME or (inc_end is not None and inc_end < today):
+            return calendar_month
+
+        period_start, period_end = current_income_period(inc_start, rec, today)
+        if inc_end is not None:
+            period_end = min(period_end, inc_end)
+        return period_start, period_end
 
     # ── Post-expense ──────────────────────────────────────────────────────────
 

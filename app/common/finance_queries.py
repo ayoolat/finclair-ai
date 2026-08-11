@@ -137,6 +137,29 @@ def _monthly_income_for_range(amt: float, start: date, end: date, inc_start: dat
     return total
 
 
+def current_income_period(inc_start: date, reoccurrence: IncomeReoccurrence, as_of: date) -> tuple[date, date]:
+    """Returns the [start, end] window (inclusive) of the recurring-income cycle that
+    `as_of` falls into. Cycles reset on fixed calendar boundaries — the 1st of the month
+    for MONTHLY, Monday for WEEKLY — not on the income's own start_date; only the very
+    first cycle is clipped to start_date since the income didn't exist before then."""
+    as_of = max(as_of, inc_start)
+
+    if reoccurrence == IncomeReoccurrence.DAILY:
+        return as_of, as_of
+
+    if reoccurrence == IncomeReoccurrence.WEEKLY:
+        monday = as_of - timedelta(days=as_of.weekday())
+        return max(monday, inc_start), monday + timedelta(days=6)
+
+    if reoccurrence == IncomeReoccurrence.MONTHLY:
+        month_start = date(as_of.year, as_of.month, 1)
+        days_in_month = calendar.monthrange(as_of.year, as_of.month)[1]
+        return max(month_start, inc_start), date(as_of.year, as_of.month, days_in_month)
+
+    # ONE_TIME has no recurring cycle to anchor to.
+    return inc_start, inc_start
+
+
 async def income_for_range(db: AsyncSession, user_id: uuid.UUID, start: date, end: date) -> float:
     rows = await db.execute(
         select(Income.amount, Income.reoccurrence, Income.start_date, Income.end_date).where(
