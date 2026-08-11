@@ -215,14 +215,37 @@ class BudgetService:
         return result.scalar_one_or_none()
 
     async def _compute_budget_spent(self, user_id: uuid.UUID, budget: Budget) -> float:
+        """Sum of expenses against categories this budget actually allocated to.
+
+        Previously summed *every* expense in the date range regardless of
+        category, so a budget with a handful of allocated categories would
+        show as blown by spending in categories it never touched (e.g.
+        groceries/fuel inflating a Hair & Nails budget's `spent`/`pct_used`,
+        and in turn Clara's "you've gone over budget" line). Scoped to the
+        same category set `_compute_category_spent` already uses per
+        allocation, just widened to "any allocated category" — and via a
+        distinct expense-id subquery rather than a direct join, so an expense
+        linked to more than one allocated category isn't double-counted.
+        """
         start = datetime(budget.start_date.year, budget.start_date.month, budget.start_date.day)
         end = datetime(budget.end_date.year, budget.end_date.month, budget.end_date.day, 23, 59, 59)
+
+        allocated_category_ids = [alloc.category_id for alloc in budget.allocations]
+        if not allocated_category_ids:
+            return 0.0
+
+        allocated_expense_ids = (
+            select(expense_categories.c.expense_id)
+            .where(expense_categories.c.category_id.in_(allocated_category_ids))
+            .distinct()
+        )
         row = await self._db.execute(
             select(func.sum(Expense.amount)).where(
                 Expense.user_id == user_id,
                 Expense.deleted_at.is_(None),
                 Expense.expense_date >= start,
                 Expense.expense_date <= end,
+                Expense.id.in_(allocated_expense_ids),
             )
         )
         return float(row.scalar_one() or 0)
