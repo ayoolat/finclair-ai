@@ -89,13 +89,14 @@ class WrappedService:
         top_category_share = top_category.percentage if top_category else 0.0
         weekend_share = (weekend_expenses / total_expenses * 100) if total_expenses > 0 else 0.0
         net_balance = total_income - total_expenses
-        # Money moved into Savings/Investment already left the account (so it counts
-        # toward total_expenses/net_balance above, e.g. for the "earned vs spent"
-        # headline), but it wasn't consumed — it was saved. Add it back so "amount saved"
-        # and "savings rate" reflect actual savings instead of only whatever was left
-        # over and never logged as an expense at all.
-        total_saved = max(0.0, total_income - (total_expenses - savings_category_expenses))
+        # "Amount saved" is only what was actually moved into Savings/Investment —
+        # not a derived income-minus-expenses leftover. Money left over but never
+        # allocated to either category isn't counted as saved.
+        total_saved = savings_category_expenses
         savings_rate = (total_saved / total_income * 100) if total_income > 0 else 0.0
+        # Separate signal from savings_rate (which can no longer go negative): whether
+        # the user spent more than they earned overall, for the "overspent" personality/tip.
+        overspend_rate = (net_balance / total_income * 100) if total_income > 0 else 0.0
 
         months_tracked = len(budget_rows)
         months_on_track = sum(1 for b in budget_rows if float(b.spent) <= float(b.amount_allocated))
@@ -105,6 +106,7 @@ class WrappedService:
         personality = _personality_rules(
             total_expenses=total_expenses,
             savings_rate=savings_rate,
+            overspend_rate=overspend_rate,
             top_category_name=top_category.name if top_category else None,
             top_category_share=top_category_share,
             weekend_share=weekend_share,
@@ -116,6 +118,7 @@ class WrappedService:
             top_category_name=top_category.name if top_category else None,
             top_category_share=top_category_share,
             savings_rate=savings_rate,
+            overspend_rate=overspend_rate,
             total_expenses=total_expenses,
         )
         badge = _badge_rules(
@@ -236,7 +239,7 @@ class WrappedService:
                     month=m,
                     income=month_income,
                     expenses=month_expenses,
-                    net_saved=max(0.0, month_income - (month_expenses - month_savings_category_expenses)),
+                    net_saved=month_savings_category_expenses,
                 )
             )
         return trend
@@ -269,7 +272,7 @@ def _savings_headline(
     if total_income == 0 and total_expenses == 0:
         return f"Nothing tracked yet for {month_label} — log an income and expense to see your savings story."
     if total_saved <= 0:
-        return f"You spent more than you earned in {month_label} — next month's a fresh start."
+        return f"Nothing moved into Savings or Investment in {month_label} — set some money aside to start your streak."
     if savings_rate >= 30:
         return f"Your savings game is fire! You kept {savings_rate:.0f}% of your income — {symbol}{total_saved:,.0f} saved."
     if savings_rate >= 10:
@@ -280,6 +283,7 @@ def _savings_headline(
 def _personality_rules(
     total_expenses: float,
     savings_rate: float,
+    overspend_rate: float,
     top_category_name: Optional[str],
     top_category_share: float,
     weekend_share: float,
@@ -293,7 +297,7 @@ def _personality_rules(
             description="You haven't logged any spending yet this month. Once you do, I'll get to know your money habits.",
         )
 
-    if savings_rate <= -10:
+    if overspend_rate <= -10:
         return MoneyPersonalityDto(
             key="big_spender",
             name="The Big Spender",
@@ -318,7 +322,7 @@ def _personality_rules(
         return MoneyPersonalityDto(
             key="steady_saver",
             name="The Steady Saver",
-            description="You consistently kept a big chunk of your income unspent this month. Disciplined and future-focused.",
+            description="You put a big chunk of your income into Savings or Investment this month. Disciplined and future-focused.",
         )
 
     if months_tracked > 0 and months_on_track / months_tracked >= 0.75:
@@ -340,6 +344,7 @@ def _tip_rules(
     top_category_name: Optional[str],
     top_category_share: float,
     savings_rate: float,
+    overspend_rate: float,
     total_expenses: float,
 ) -> TipDto:
     if total_expenses == 0:
@@ -348,7 +353,7 @@ def _tip_rules(
             body="Once you log a few expenses, I'll be able to spot patterns and suggest ways to save.",
         )
 
-    if savings_rate < 0:
+    if overspend_rate < 0:
         return TipDto(
             title="Bring spending back under income",
             body="You spent more than you earned this month. Try setting a budget so you can see the gap before it grows.",
