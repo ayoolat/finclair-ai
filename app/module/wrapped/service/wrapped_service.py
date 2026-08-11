@@ -8,7 +8,7 @@ from fastapi import Depends
 from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.finance_queries import category_totals, expense_total, income_for_range
+from app.common.finance_queries import category_total_by_names, category_totals, expense_total, income_for_range
 from app.common.response import Result
 from app.database.session import get_db
 from app.module.budget.schema.budget import Budget
@@ -29,10 +29,12 @@ from app.module.wrapped.dto.wrapped import (
     WrappedDto,
 )
 
+# Default categories every user gets (seeded in app/core/startup.py) that represent
+# money set aside rather than money spent. Per product decision, only these two count
+# toward "amount saved" — not arbitrary user-created categories.
+SAVINGS_CATEGORY_NAMES = ["Savings", "Investment"]
 TOP_CATEGORIES_LIMIT = 6
-WEEKEND_DOW = (0, 6)  # Postgres EXTRACT(DOW): 0 = Sunday, 6 = Saturday
-# How far back to look for the "consistency" signal (badge/personality rules) —
-# a single month can't show a streak, so that part still looks at recent history.
+WEEKEND_DOW = (0, 6) 
 TRAILING_MONTHS_FOR_CONSISTENCY = 6
 
 
@@ -62,12 +64,15 @@ class WrappedService:
 
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
 
-        total_expenses, category_rows, total_income, weekend_expenses, budget_rows = await asyncio.gather(
-            expense_total(self._db, user_id, dt_start, dt_end),
-            category_totals(self._db, user_id, dt_start, dt_end, limit=TOP_CATEGORIES_LIMIT),
-            income_for_range(self._db, user_id, start_date, end_date),
-            self._weekend_expense_total(user_id, dt_start, dt_end),
-            self._budgets_for_window(user_id, year, month, TRAILING_MONTHS_FOR_CONSISTENCY),
+        total_expenses, category_rows, total_income, weekend_expenses, budget_rows, savings_category_expenses = (
+            await asyncio.gather(
+                expense_total(self._db, user_id, dt_start, dt_end),
+                category_totals(self._db, user_id, dt_start, dt_end, limit=TOP_CATEGORIES_LIMIT),
+                income_for_range(self._db, user_id, start_date, end_date),
+                self._weekend_expense_total(user_id, dt_start, dt_end),
+                self._budgets_for_window(user_id, year, month, TRAILING_MONTHS_FOR_CONSISTENCY),
+                category_total_by_names(self._db, user_id, SAVINGS_CATEGORY_NAMES, dt_start, dt_end),
+            )
         )
         monthly_trend = await self._monthly_trend(user_id, year, month, TRAILING_MONTHS_FOR_CONSISTENCY)
 
@@ -84,7 +89,13 @@ class WrappedService:
         top_category_share = top_category.percentage if top_category else 0.0
         weekend_share = (weekend_expenses / total_expenses * 100) if total_expenses > 0 else 0.0
         net_balance = total_income - total_expenses
-        savings_rate = (net_balance / total_income * 100) if total_income > 0 else 0.0
+        # Money moved into Savings/Investment already left the account (so it counts
+        # toward total_expenses/net_balance above, e.g. for the "earned vs spent"
+        # headline), but it wasn't consumed — it was saved. Add it back so "amount saved"
+        # and "savings rate" reflect actual savings instead of only whatever was left
+        # over and never logged as an expense at all.
+        total_saved = max(0.0, total_income - (total_expenses - savings_category_expenses))
+        savings_rate = (total_saved / total_income * 100) if total_income > 0 else 0.0
 
         months_tracked = len(budget_rows)
         months_on_track = sum(1 for b in budget_rows if float(b.spent) <= float(b.amount_allocated))
@@ -160,8 +171,8 @@ class WrappedService:
                 ),
                 savings=SavingsDto(
                     savings_rate=savings_rate,
-                    total_saved=max(0.0, net_balance),
-                    headline=_savings_headline(savings_rate, symbol, net_balance, total_income, total_expenses, month_label),
+                    total_saved=total_saved,
+                    headline=_savings_headline(savings_rate, symbol, total_saved, total_income, total_expenses, month_label),
                     monthly_trend=monthly_trend,
                 ),
                 personality=personality,
@@ -173,7 +184,7 @@ class WrappedService:
                     month=month,
                     total_income=total_income,
                     total_expenses=total_expenses,
-                    total_saved=max(0.0, net_balance),
+                    total_saved=total_saved,
                     top_category=top_category.name if top_category else None,
                     personality_name=personality.name,
                     badge_name=badge.name,
@@ -214,15 +225,18 @@ class WrappedService:
             month_end = date(y, m, last_day)
             dt_start = datetime(y, m, 1)
             dt_end = datetime(y, m, last_day, 23, 59, 59)
-            month_expenses = await expense_total(self._db, user_id, dt_start, dt_end)
-            month_income = await income_for_range(self._db, user_id, month_start, month_end)
+            month_expenses, month_income, month_savings_category_expenses = await asyncio.gather(
+                expense_total(self._db, user_id, dt_start, dt_end),
+                income_for_range(self._db, user_id, month_start, month_end),
+                category_total_by_names(self._db, user_id, SAVINGS_CATEGORY_NAMES, dt_start, dt_end),
+            )
             trend.append(
                 MonthlySavingsDto(
                     year=y,
                     month=m,
                     income=month_income,
                     expenses=month_expenses,
-                    net_saved=month_income - month_expenses,
+                    net_saved=max(0.0, month_income - (month_expenses - month_savings_category_expenses)),
                 )
             )
         return trend
@@ -250,17 +264,17 @@ def _trailing_months(year: int, month: int, count: int) -> list[tuple[int, int]]
 # ── Rule engines ──────────────────────────────────────────────────────────────
 
 def _savings_headline(
-    savings_rate: float, symbol: str, net_balance: float, total_income: float, total_expenses: float, month_label: str
+    savings_rate: float, symbol: str, total_saved: float, total_income: float, total_expenses: float, month_label: str
 ) -> str:
     if total_income == 0 and total_expenses == 0:
         return f"Nothing tracked yet for {month_label} — log an income and expense to see your savings story."
-    if net_balance <= 0:
+    if total_saved <= 0:
         return f"You spent more than you earned in {month_label} — next month's a fresh start."
     if savings_rate >= 30:
-        return f"Your savings game is fire! You kept {savings_rate:.0f}% of your income — {symbol}{net_balance:,.0f} saved."
+        return f"Your savings game is fire! You kept {savings_rate:.0f}% of your income — {symbol}{total_saved:,.0f} saved."
     if savings_rate >= 10:
-        return f"Solid work — you saved {savings_rate:.0f}% of your income, {symbol}{net_balance:,.0f} in total."
-    return f"You saved {symbol}{net_balance:,.0f} this month — {savings_rate:.0f}% of your income. Room to grow next month."
+        return f"Solid work — you saved {savings_rate:.0f}% of your income, {symbol}{total_saved:,.0f} in total."
+    return f"You saved {symbol}{total_saved:,.0f} this month — {savings_rate:.0f}% of your income. Room to grow next month."
 
 
 def _personality_rules(
