@@ -22,6 +22,7 @@ class _ItemSchema(BaseModel):
     name: str
     quantity: float = 1.0
     unit_price: float
+    category: Optional[str] = None
 
     @field_validator("quantity", mode="before")
     @classmethod
@@ -49,6 +50,7 @@ class _ReceiptSchema(BaseModel):
     tax: Optional[float] = None
     discount: Optional[float] = None
     confidence: float = 0.0  # 0.0 – 1.0; model's self-assessed extraction quality
+    category: Optional[str] = None
     items: list[_ItemSchema] = []
 
     @field_validator("total", "subtotal", "tax", "discount", mode="before")
@@ -68,7 +70,7 @@ class _ReceiptSchema(BaseModel):
         return self
 
 
-_SYSTEM_PROMPT = (
+_BASE_SYSTEM_PROMPT = (
     "You are a precise receipt parser for a financial application. "
     "First decide whether the image is actually a purchase receipt or invoice — an itemized proof of "
     "purchase with a merchant name and a total amount paid. If it is NOT one (e.g. a flyer, poster, "
@@ -78,6 +80,18 @@ _SYSTEM_PROMPT = (
     "If a field cannot be determined, use null. "
     "Set confidence to a float between 0.0 (not confident) and 1.0 (fully confident) based on image clarity and extraction quality."
 )
+
+
+def _build_system_prompt(category_names: Optional[list[str]]) -> str:
+    if not category_names:
+        return _BASE_SYSTEM_PROMPT
+    names = ", ".join(category_names)
+    return (
+        f"{_BASE_SYSTEM_PROMPT} "
+        f"Also infer a spending category for the receipt overall, and for each line item, choosing the "
+        f"single best fit from this exact list: {names}. Use the exact name as given. If none of them "
+        f"fit, leave the category field null rather than guessing."
+    )
 
 _MAX_RETRIES = 3
 
@@ -102,13 +116,13 @@ class OpenAIOcrProvider(OcrProvider):
             )
         return result
 
-    def _call_api(self, client: OpenAI, data_url: str) -> _ReceiptSchema:
+    def _call_api(self, client: OpenAI, data_url: str, category_names: Optional[list[str]]) -> _ReceiptSchema:
         response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             max_tokens=1024,
             response_format=_ReceiptSchema,
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _build_system_prompt(category_names)},
                 {
                     "role": "user",
                     "content": [
@@ -123,7 +137,12 @@ class OpenAIOcrProvider(OcrProvider):
             raise ValueError("Model returned no structured output.")
         return parsed
 
-    async def parse_receipt(self, image_bytes: bytes, content_type: str) -> OcrResult:
+    async def parse_receipt(
+        self,
+        image_bytes: bytes,
+        content_type: str,
+        category_names: Optional[list[str]] = None,
+    ) -> OcrResult:
         self._validate_input(image_bytes, content_type)
 
         client = get_openai_client()
@@ -134,7 +153,7 @@ class OpenAIOcrProvider(OcrProvider):
         parsed: Optional[_ReceiptSchema] = None
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
-                parsed = self._call_api(client, data_url)
+                parsed = self._call_api(client, data_url, category_names)
                 break
             except Exception as exc:
                 last_exc = exc
@@ -162,6 +181,7 @@ class OpenAIOcrProvider(OcrProvider):
                 name=item.name,
                 quantity=max(1, round(item.quantity)),
                 unit_price=Decimal(str(item.unit_price)),
+                category=item.category,
             )
             for item in parsed.items
         ]
@@ -174,6 +194,7 @@ class OpenAIOcrProvider(OcrProvider):
             confidence=parsed.confidence,
             tax=_to_decimal(parsed.tax),
             discount=_to_decimal(parsed.discount),
+            category=parsed.category,
         )
 
         logger.info(

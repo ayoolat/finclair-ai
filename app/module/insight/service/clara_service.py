@@ -95,9 +95,6 @@ class ClaraService:
         ))
 
     async def _current_income_cycle(self, user_id: uuid.UUID, today: date) -> tuple[date, date]:
-        """The user's current income cycle window: MONTHLY resets on the 1st of the month,
-        WEEKLY resets on Monday — clipped to the income's start_date/end_date so the first
-        (and last) cycle don't extend beyond when the income is actually active."""
         calendar_month = (
             date(today.year, today.month, 1),
             date(today.year, today.month, calendar.monthrange(today.year, today.month)[1]),

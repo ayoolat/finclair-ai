@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import Depends, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -224,8 +224,12 @@ class ExpenseService:
         image_bytes = await image.read()
         content_type = image.content_type or "image/jpeg"
 
+        category_options = await self._category_options(user_id)
+
         try:
-            ocr_result = await self._ocr.parse_receipt(image_bytes, content_type)
+            ocr_result = await self._ocr.parse_receipt(
+                image_bytes, content_type, category_names=[c.name for c in category_options]
+            )
         except ValueError as exc:
             return Result.fail(str(exc), error_code="INVALID_IMAGE", status_code=400)
         except RuntimeError as exc:
@@ -264,16 +268,20 @@ class ExpenseService:
                 "low_confidence": ocr_result.confidence < _RECEIPT_LOW_CONFIDENCE,
             },
         )
+        matched_category = _match_category(ocr_result.category, category_options)
+        expense.categories = [matched_category] if matched_category else []
         self._db.add(expense)
         await self._db.flush()
 
         for ocr_item in ocr_result.items:
+            item_category = _match_category(ocr_item.category, category_options)
             self._db.add(ExpenseItem(
                 expense_id=expense.id,
                 name=ocr_item.name,
                 quantity=ocr_item.quantity,
                 unit_price=ocr_item.unit_price,
                 total_price=ocr_item.unit_price * ocr_item.quantity,
+                category_id=item_category.id if item_category else None,
                 created_by=user_id,
                 updated_by=user_id,
             ))
@@ -573,6 +581,13 @@ class ExpenseService:
         result = await self._db.execute(select(Category).where(Category.id.in_(ids)))
         return list(result.scalars().all())
 
+    async def _category_options(self, user_id: uuid.UUID) -> list[Category]:
+        """System categories plus this user's own, for OCR category inference to pick from."""
+        result = await self._db.execute(
+            select(Category).where(or_(Category.user_id.is_(None), Category.user_id == user_id))
+        )
+        return list(result.scalars().all())
+
 
 def get_expense_service(
     db: AsyncSession = Depends(get_db),
@@ -590,6 +605,16 @@ _RECEIPT_AMOUNT_TOLERANCE_MIN = Decimal("0.01")  # minimum absolute tolerance
 def _receipt_amount_matches(claimed: Decimal, detected: Decimal) -> bool:
     tolerance = max(_RECEIPT_AMOUNT_TOLERANCE_MIN, claimed * _RECEIPT_AMOUNT_TOLERANCE_PCT)
     return abs(claimed - detected) <= tolerance
+
+
+def _match_category(name: Optional[str], options: list[Category]) -> Optional[Category]:
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    for option in options:
+        if option.name.strip().lower() == normalized:
+            return option
+    return None
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
