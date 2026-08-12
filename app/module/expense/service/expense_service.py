@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
 from app.common.enums.income import IncomeReoccurrence
 from app.common.ocr.factory import get_ocr_provider
-from app.common.response import PaginatedResponse, Result
+from app.common.response import PaginationMeta, Result
 from app.common.storage.factory import get_storage_provider
 from app.database.session import get_db
 from app.module.category.schema.category import Category
@@ -20,6 +20,7 @@ from app.module.expense.dto.expense import (
     CategoryExpenseSummaryDto,
     CreateManualExpenseDto,
     ExpenseFilterDto,
+    ExpenseListResponseDto,
     ExpenseResponseDto,
     ExpenseSummaryDto,
     IncomeExpenseTrendPointDto,
@@ -61,7 +62,7 @@ class ExpenseService:
 
     async def list_expenses(
         self, user_id: uuid.UUID, filters: ExpenseFilterDto
-    ) -> Result[PaginatedResponse[ExpenseResponseDto]]:
+    ) -> Result[ExpenseListResponseDto]:
         base = select(Expense).where(
             Expense.user_id == user_id,
             Expense.deleted_at.is_(None),
@@ -86,9 +87,13 @@ class ExpenseService:
                 )
             )
 
+        base_subquery = base.subquery()
         total = (await self._db.execute(
-            select(func.count()).select_from(base.subquery())
+            select(func.count()).select_from(base_subquery)
         )).scalar_one()
+        total_expenses = (await self._db.execute(
+            select(func.sum(base_subquery.c.amount))
+        )).scalar_one() or Decimal("0")
 
         sort_col = {
             "expense_date": Expense.expense_date,
@@ -109,11 +114,10 @@ class ExpenseService:
         )
 
         return Result.ok(
-            PaginatedResponse.ok(
+            ExpenseListResponseDto(
                 data=[ExpenseResponseDto.model_validate(e) for e in rows.scalars().all()],
-                page=filters.page,
-                page_size=filters.page_size,
-                total=total,
+                pagination=PaginationMeta.build(page=filters.page, page_size=filters.page_size, total=total),
+                total_expenses=total_expenses,
             )
         )
 

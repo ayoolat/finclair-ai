@@ -6,6 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, computed_field, field_validator
 
 from app.common.dto.pagination import PageQueryDto
+from app.common.response import PaginatedResponse
 from app.common.enums.expense import (
     LARGE_EXPENSE_EVIDENCE_THRESHOLD,
     ExpenseStatus,
@@ -161,6 +162,10 @@ class ExpenseResponseDto(BaseModel):
         )
 
     model_config = {"from_attributes": True}
+
+
+class ExpenseListResponseDto(PaginatedResponse[ExpenseResponseDto]):
+    total_expenses: Decimal
 
 
 # ── Summary / analytics ───────────────────────────────────────────────────────

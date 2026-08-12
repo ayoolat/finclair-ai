@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.common.response import ApiResponse, PaginatedResponse
+from app.common.response import ApiResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
 from app.module.expense.dto.expense import (
     CreateManualExpenseDto,
     ExpenseFilterDto,
+    ExpenseListResponseDto,
     ExpenseResponseDto,
     ExpenseStreakResponseDto,
     ExpenseSummaryDto,
@@ -45,7 +46,7 @@ async def expense_summary(
     return JSONResponse(status_code=200, content=ApiResponse.ok(data=result.data).model_dump())
 
 
-@router.get("", response_model=PaginatedResponse[ExpenseResponseDto])
+@router.get("", response_model=ExpenseListResponseDto)
 async def list_expenses(
     filters: ExpenseFilterDto = Depends(),
     ctx: AuthContext = Depends(get_auth_context),
