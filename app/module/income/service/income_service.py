@@ -66,7 +66,7 @@ class IncomeService:
         if existing.scalar_one_or_none() is not None:
             return Result.fail("Source already exists.", error_code="SOURCE_EXISTS", status_code=409)
 
-        source = IncomeSource(user_id=user_id, name=dto.name, is_default=False, created_by=user_id)
+        source = IncomeSource(user_id=user_id, name=dto.name, is_default=False)
         self._db.add(source)
         await self._db.commit()
         await self._db.refresh(source)
