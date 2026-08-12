@@ -87,13 +87,36 @@ class ExpenseService:
                 )
             )
 
-        base_subquery = base.subquery()
+        agg_subquery = base.with_only_columns(Expense.id, Expense.amount).subquery()
         total = (await self._db.execute(
-            select(func.count()).select_from(base_subquery)
+            select(func.count()).select_from(agg_subquery)
         )).scalar_one()
         total_expenses = (await self._db.execute(
-            select(func.sum(base_subquery.c.amount))
+            select(func.sum(agg_subquery.c.amount))
         )).scalar_one() or Decimal("0")
+
+        category_rows = await self._db.execute(
+            select(
+                Category.name,
+                func.sum(agg_subquery.c.amount).label("total"),
+                func.count(agg_subquery.c.id).label("tx_count"),
+            )
+            .select_from(agg_subquery)
+            .join(expense_categories, expense_categories.c.expense_id == agg_subquery.c.id)
+            .join(Category, Category.id == expense_categories.c.category_id)
+            .group_by(Category.name)
+            .order_by(func.sum(agg_subquery.c.amount).desc())
+        )
+        total_expenses_float = float(total_expenses)
+        category_breakdown = [
+            CategoryExpenseSummaryDto(
+                name=row.name,
+                amount=float(row.total),
+                transaction_count=row.tx_count,
+                pct_of_total=(float(row.total) / total_expenses_float * 100) if total_expenses_float > 0 else 0.0,
+            )
+            for row in category_rows.all()
+        ]
 
         sort_col = {
             "expense_date": Expense.expense_date,
@@ -118,6 +141,7 @@ class ExpenseService:
                 data=[ExpenseResponseDto.model_validate(e) for e in rows.scalars().all()],
                 pagination=PaginationMeta.build(page=filters.page, page_size=filters.page_size, total=total),
                 total_expenses=total_expenses,
+                category_breakdown=category_breakdown,
             )
         )
 

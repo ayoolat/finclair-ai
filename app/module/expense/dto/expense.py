@@ -164,10 +164,6 @@ class ExpenseResponseDto(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ExpenseListResponseDto(PaginatedResponse[ExpenseResponseDto]):
-    total_expenses: Decimal
-
-
 # ── Summary / analytics ───────────────────────────────────────────────────────
 
 class CategoryExpenseSummaryDto(BaseModel):
@@ -175,6 +171,13 @@ class CategoryExpenseSummaryDto(BaseModel):
     amount: float
     transaction_count: int
     pct_of_total: float
+
+
+class ExpenseListResponseDto(PaginatedResponse[ExpenseResponseDto]):
+    # Both computed over every expense matching the filters, not just the
+    # current page.
+    total_expenses: Decimal
+    category_breakdown: list[CategoryExpenseSummaryDto]
 
 
 class MonthlyTrendPointDto(BaseModel):
