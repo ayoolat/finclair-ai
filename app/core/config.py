@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Application
-    app_name: str = "Finclair AI"
+    app_name: str = "Finclar AI"
     debug: bool = False
 
     # Database — required, no default
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     smtp_user: str
     smtp_password: str
     smtp_from: str
-    smtp_from_name: str = "Finclair"
+    smtp_from_name: str = "Finclar AI"
 
     # OTP
     otp_expire_minutes: int = 10
