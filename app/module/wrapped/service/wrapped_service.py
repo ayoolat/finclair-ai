@@ -89,13 +89,8 @@ class WrappedService:
         top_category_share = top_category.percentage if top_category else 0.0
         weekend_share = (weekend_expenses / total_expenses * 100) if total_expenses > 0 else 0.0
         net_balance = total_income - total_expenses
-        # "Amount saved" is only what was actually moved into Savings/Investment —
-        # not a derived income-minus-expenses leftover. Money left over but never
-        # allocated to either category isn't counted as saved.
         total_saved = savings_category_expenses
         savings_rate = (total_saved / total_income * 100) if total_income > 0 else 0.0
-        # Separate signal from savings_rate (which can no longer go negative): whether
-        # the user spent more than they earned overall, for the "overspent" personality/tip.
         overspend_rate = (net_balance / total_income * 100) if total_income > 0 else 0.0
 
         months_tracked = len(budget_rows)

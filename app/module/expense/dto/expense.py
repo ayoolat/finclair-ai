@@ -174,8 +174,6 @@ class CategoryExpenseSummaryDto(BaseModel):
 
 
 class ExpenseListResponseDto(PaginatedResponse[ExpenseResponseDto]):
-    # Both computed over every expense matching the filters, not just the
-    # current page.
     total_expenses: Decimal
     category_breakdown: list[CategoryExpenseSummaryDto]
 
