@@ -6,7 +6,12 @@ from fastapi.responses import JSONResponse
 from app.common.dto.pagination import PageQueryDto
 from app.common.response import ApiResponse, PaginatedResponse
 from app.module.auth.dependencies import AuthContext, get_auth_context
-from app.module.friends.dto.friend import FriendshipResponseDto, SendInviteDto, UserSearchResultDto
+from app.module.friends.dto.friend import (
+    BlockedUserResponseDto,
+    FriendshipResponseDto,
+    SendInviteDto,
+    UserSearchResultDto,
+)
 from app.module.friends.service.friend_service import FriendService, get_friend_service
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -95,3 +100,39 @@ async def remove_friend(
     if result.is_err:
         return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
     return JSONResponse(status_code=200, content=ApiResponse.ok(message="Friend removed.").model_dump())
+
+
+@router.get("/blocked", response_model=PaginatedResponse[BlockedUserResponseDto])
+async def list_blocked_users(
+    filters: PageQueryDto = Depends(),
+    ctx: AuthContext = Depends(get_auth_context),
+    service: FriendService = Depends(get_friend_service),
+) -> JSONResponse:
+    result = await service.list_blocked_users(ctx.user_id, filters)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=result.data.model_dump())
+
+
+@router.post("/block/{user_id}", response_model=ApiResponse[None])
+async def block_user(
+    user_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: FriendService = Depends(get_friend_service),
+) -> JSONResponse:
+    result = await service.block_user(ctx.user_id, user_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(message="User blocked.").model_dump())
+
+
+@router.delete("/block/{user_id}", response_model=ApiResponse[None])
+async def unblock_user(
+    user_id: uuid.UUID,
+    ctx: AuthContext = Depends(get_auth_context),
+    service: FriendService = Depends(get_friend_service),
+) -> JSONResponse:
+    result = await service.unblock_user(ctx.user_id, user_id)
+    if result.is_err:
+        return JSONResponse(status_code=result.status_code, content=ApiResponse.error(result.error).model_dump())
+    return JSONResponse(status_code=200, content=ApiResponse.ok(message="User unblocked.").model_dump())

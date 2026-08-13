@@ -32,3 +32,14 @@ class UserSearchResultDto(BaseModel):
     profile_icon: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class BlockedUserResponseDto(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    username: str
+    email: str
+    profile_icon: Optional[str] = None
+    blocked_at: datetime
+
+    model_config = {"from_attributes": True}

@@ -21,6 +21,7 @@ from app.module.auth.schema.otp_token import OtpToken  # noqa: F401
 from app.module.auth.schema.session import Session  # noqa: F401
 from app.module.income.schema.income_source import IncomeSource  # noqa: F401
 from app.module.friends.schema.friendship import Friendship  # noqa: F401
+from app.module.friends.schema.user_block import UserBlock  # noqa: F401
 from app.module.groups.schema.group import Group  # noqa: F401
 from app.module.groups.schema.group_member import GroupMember  # noqa: F401
 from app.module.groups.schema.group_savings_entry import GroupSavingsEntry  # noqa: F401
