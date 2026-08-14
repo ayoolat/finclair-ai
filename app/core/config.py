@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     smtp_user: str
     smtp_password: str
     smtp_from: str
-    smtp_from_name: str = "Finclair"
+    smtp_from_name: str = "Finclair AI"
 
     # OTP
     otp_expire_minutes: int = 10

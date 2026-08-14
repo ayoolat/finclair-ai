@@ -21,7 +21,7 @@ def enqueue_otp_email(*, to: str, username: str, code: str) -> str | None:
             send_email,
             kwargs={
                 "to": to,
-                "subject": "Your Finclair verification code",
+                "subject": "Your Finclair AI verification code",
                 "template": "otp_verification.html",
                 "context": {"username": username, "code": code},
             },
@@ -39,7 +39,7 @@ def enqueue_passcode_reset_email(*, to: str, username: str, code: str) -> str | 
             send_email,
             kwargs={
                 "to": to,
-                "subject": "Reset your Finclair passcode",
+                "subject": "Reset your Finclair AI passcode",
                 "template": "passcode_reset.html",
                 "context": {"username": username, "code": code},
             },
