@@ -19,6 +19,7 @@ from app.module.groups.service._helpers import group_to_dto, member_to_dto, shar
 from app.module.user.schema.user import User
 
 FREE_GROUP_LIMIT = 2
+FREE_MEMBER_MINIMUM = 2
 FREE_MEMBER_LIMIT = 10
 
 
@@ -63,6 +64,11 @@ class GroupService:
             )
 
         all_member_ids = [user_id] + [mid for mid in dto.member_ids if mid != user_id]
+        if len(all_member_ids) < FREE_MEMBER_MINIMUM:
+            return Result.fail(
+                f"A group needs at least {FREE_MEMBER_MINIMUM} members — add at least one friend.",
+                status_code=422,
+            )
         if len(all_member_ids) > FREE_MEMBER_LIMIT:
             return Result.fail(
                 f"You have exceeded the limit of {FREE_MEMBER_LIMIT} maximum friends per group. Upgrade to Clara+ to add more.",
