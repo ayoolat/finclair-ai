@@ -268,6 +268,7 @@ class BudgetService:
             )
         )
         return float(row.scalar_one() or 0)
+    
 
     async def _to_dto(self, budget: Budget, user_id: uuid.UUID) -> BudgetResponseDto:
         spent = await self._compute_budget_spent(user_id, budget)
