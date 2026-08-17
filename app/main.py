@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.common.middleware import ErrorHandlerMiddleware, validation_exception_handler
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.core.scheduler import schedule_daily
+from app.core.scheduler import schedule_daily, schedule_daily_at
 from app.core.startup import check_database, check_redis, run_startup_checks, sync_paystack_banks
 from app.module.auth.router import router as auth_router
 from app.module.bank.router import router as bank_router
@@ -25,6 +25,10 @@ from app.module.category.router import router as category_router
 from app.module.clara.router import router as clara_router
 from app.module.email.router import router as email_router
 from app.module.expense.router import router as expense_router
+from app.module.expense.service.daily_notification_jobs import (
+    send_daily_ai_tips,
+    send_daily_expense_summaries,
+)
 from app.module.friends.router import router as friends_router
 from app.module.goal.router import router as goal_router
 from app.module.groups.router import router as groups_router
@@ -49,6 +53,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     schedule_daily("check_budget_health", check_budget_health)
     schedule_daily("check_no_spend_challenges", check_no_spend_challenges)
     schedule_daily("check_budget_category_challenges", check_budget_category_challenges)
+    schedule_daily_at("send_daily_ai_tips", hour=9, minute=0, task_fn=send_daily_ai_tips)
+    schedule_daily_at("send_daily_expense_summaries", hour=21, minute=0, task_fn=send_daily_expense_summaries)
     yield
 
 

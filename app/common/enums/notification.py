@@ -14,3 +14,5 @@ class NotificationType(str, Enum):
     GROUP_ACTIVITY = "group_activity"
     BANK_SYNC_COMPLETED = "bank_sync_completed"
     SUBSCRIPTION_ACTIVATED = "subscription_activated"
+    DAILY_EXPENSE_SUMMARY = "daily_expense_summary"
+    DAILY_AI_TIP = "daily_ai_tip"
