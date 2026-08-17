@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
 from app.common.enums.income import IncomeReoccurrence
+from app.common.timezone import local_month_bounds
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginationMeta, Result
 from app.common.storage.factory import get_storage_provider
@@ -646,12 +647,7 @@ def _match_category(name: Optional[str], options: list[Category]) -> Optional[Ca
 
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    import calendar
-    last_day = calendar.monthrange(year, month)[1]
-    return (
-        datetime(year, month, 1, 0, 0, 0),
-        datetime(year, month, last_day, 23, 59, 59),
-    )
+    return local_month_bounds(year, month)
 
 
 def _month_window(year: int, month: int, before: int, ahead: int) -> list[tuple[int, int]]:

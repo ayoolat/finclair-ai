@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.income import IncomeReoccurrence
+from app.common.timezone import local_day_end, local_day_start, local_month_bounds
 from app.common.finance_queries import (
     category_totals,
     current_income_period,
@@ -56,8 +57,8 @@ class ClaraService:
         if end_date < start_date:
             return Result.fail("end_date must be on or after start_date.", error_code="INVALID_RANGE", status_code=400)
 
-        dt_start = datetime(start_date.year, start_date.month, start_date.day)
-        dt_end = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+        dt_start = local_day_start(start_date)
+        dt_end = local_day_end(end_date)
 
         total_spent, category_rows, total_income, (this_week, last_week), (verified_amt, self_reported_amt) = await asyncio.gather(
             expense_total(self._db, user_id, dt_start, dt_end),
@@ -125,8 +126,8 @@ class ClaraService:
     async def post_expense_insight(self, user_id: uuid.UUID, expense: Expense) -> str:
         today = date.today()
         month_start, month_end = _month_bounds(today.year, today.month)
-        week_end = datetime(today.year, today.month, today.day, 23, 59, 59)
-        week_start = datetime(today.year, today.month, today.day) - timedelta(days=6)
+        week_end = local_day_end(today)
+        week_start = local_day_start(today - timedelta(days=6))
 
         prev_year, prev_month = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
         prev_start, prev_end = _month_bounds(prev_year, prev_month)
@@ -227,10 +228,10 @@ class ClaraService:
 
     async def _week_totals(self, user_id: uuid.UUID) -> tuple[float, float]:
         today = date.today()
-        this_end = datetime(today.year, today.month, today.day, 23, 59, 59)
-        this_start = datetime(today.year, today.month, today.day) - timedelta(days=6)
+        this_end = local_day_end(today)
+        this_start = local_day_start(today - timedelta(days=6))
         last_end = this_start - timedelta(seconds=1)
-        last_start = datetime(last_end.year, last_end.month, last_end.day) - timedelta(days=6)
+        last_start = local_day_start(last_end.date() - timedelta(days=6))
 
         this_week, last_week = await asyncio.gather(
             expense_total(self._db, user_id, this_start, this_end),
@@ -510,8 +511,4 @@ def _budget_insight_rules(
 # ── Shared helper ─────────────────────────────────────────────────────────────
 
 def _month_bounds(year: int, month: int) -> tuple[datetime, datetime]:
-    last_day = calendar.monthrange(year, month)[1]
-    return (
-        datetime(year, month, 1, 0, 0, 0),
-        datetime(year, month, last_day, 23, 59, 59),
-    )
+    return local_month_bounds(year, month)

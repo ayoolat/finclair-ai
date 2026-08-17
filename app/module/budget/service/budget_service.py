@@ -1,6 +1,6 @@
 import uuid
 import calendar
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 
@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.common.dto.pagination import PageQueryDto
 from app.common.response import PaginatedResponse, Result
+from app.common.timezone import local_day_end, local_day_start
 from app.database.session import get_db
 from app.module.budget.dto.budget import (
     AllocationResponseDto,
@@ -227,8 +228,8 @@ class BudgetService:
         distinct expense-id subquery rather than a direct join, so an expense
         linked to more than one allocated category isn't double-counted.
         """
-        start = datetime(budget.start_date.year, budget.start_date.month, budget.start_date.day)
-        end = datetime(budget.end_date.year, budget.end_date.month, budget.end_date.day, 23, 59, 59)
+        start = local_day_start(budget.start_date)
+        end = local_day_end(budget.end_date)
 
         allocated_category_ids = [alloc.category_id for alloc in budget.allocations]
         if not allocated_category_ids:
@@ -253,8 +254,8 @@ class BudgetService:
     async def _compute_category_spent(
         self, user_id: uuid.UUID, budget: Budget, category_id: uuid.UUID
     ) -> float:
-        start = datetime(budget.start_date.year, budget.start_date.month, budget.start_date.day)
-        end = datetime(budget.end_date.year, budget.end_date.month, budget.end_date.day, 23, 59, 59)
+        start = local_day_start(budget.start_date)
+        end = local_day_end(budget.end_date)
         row = await self._db.execute(
             select(func.sum(Expense.amount))
             .join(expense_categories, expense_categories.c.expense_id == Expense.id)
