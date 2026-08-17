@@ -273,8 +273,8 @@ class BudgetService:
         spent = await self._compute_budget_spent(user_id, budget)
         allocated = float(budget.amount_allocated)
         total_allocated = float(sum(alloc.amount_allocated for alloc in budget.allocations))
-        remaining = max(0.0, total_allocated - spent)
-        pct_used = (spent / total_allocated * 100) if total_allocated > 0 else 0.0
+        remaining = max(0.0, allocated - spent)
+        pct_used = (spent / allocated * 100) if allocated > 0 else 0.0
 
         allocation_dtos = []
         for alloc in budget.allocations:
