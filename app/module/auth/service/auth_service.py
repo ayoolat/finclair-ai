@@ -62,7 +62,7 @@ class AuthService:
         otp = await self._otp.issue(user.id, OtpType.EMAIL_VERIFICATION)
         await self._db.commit()
 
-        enqueue_otp_email(to=user.email, username=user.username, code=otp.code)
+        await enqueue_otp_email(db=self._db, to=user.email, username=user.username, code=otp.code)
         payload: dict = {"message": "Verification code sent to your email."}
         if settings.debug:
             payload["otp"] = otp.code
@@ -96,7 +96,7 @@ class AuthService:
         otp = await self._otp.issue(user.id, OtpType.EMAIL_VERIFICATION)
         await self._db.commit()
 
-        enqueue_otp_email(to=user.email, username=user.username, code=otp.code)
+        await enqueue_otp_email(db=self._db, to=user.email, username=user.username, code=otp.code)
         payload: dict = {"message": "Verification code resent."}
         if settings.debug:
             payload["otp"] = otp.code
@@ -157,7 +157,7 @@ class AuthService:
         otp = await self._otp.issue(user.id, OtpType.PASSCODE_RESET)
         await self._db.commit()
 
-        enqueue_passcode_reset_email(to=user.email, username=user.username, code=otp.code)
+        await enqueue_passcode_reset_email(db=self._db, to=user.email, username=user.username, code=otp.code)
         payload = {"message": "If that email exists, a reset code has been sent."}
         if settings.debug:
             payload["otp"] = otp.code

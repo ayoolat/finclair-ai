@@ -36,6 +36,7 @@ from app.module.challenge.schema.badge import Badge  # noqa: F401
 from app.module.challenge.schema.user_badge import UserBadge  # noqa: F401
 from app.module.budget.schema.budget_alert import BudgetAlert  # noqa: F401
 from app.module.expense.schema.expense_streak import ExpenseStreak  # noqa: F401
+from app.module.email.schema.email_log import EmailLog  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

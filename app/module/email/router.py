@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.email.service import get_job_status
-from app.common.email.sender import send_email
-from app.common.queue.connection import email_queue
+from app.common.email.service import enqueue_email, get_job_status
 from app.common.response import ApiResponse
 from app.core.config import settings
+from app.database.session import get_db
 from app.module.email.dto.email import EnqueueEmailDto, JobStatusDto
 
 router = APIRouter(prefix="/email", tags=["email"])
@@ -17,9 +17,10 @@ def _require_api_key(x_api_key: str = Header(...)) -> None:
 
 
 @router.post("/enqueue", response_model=ApiResponse[dict], dependencies=[])
-async def enqueue_email(
+async def enqueue_email_route(
     dto: EnqueueEmailDto,
     x_api_key: str = Header(...),
+    db: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
     """
     Enqueue an arbitrary email job. Protected by X-Api-Key header.
@@ -27,18 +28,10 @@ async def enqueue_email(
     """
     _require_api_key(x_api_key)
 
-    job = email_queue.enqueue(
-        send_email,
-        kwargs={
-            "to": dto.to,
-            "subject": dto.subject,
-            "template": dto.template,
-            "context": dto.context,
-        },
-    )
+    job_id = await enqueue_email(db=db, to=dto.to, subject=dto.subject, template=dto.template, context=dto.context)
     return JSONResponse(
         status_code=202,
-        content=ApiResponse.ok(data={"job_id": job.id}, message="Email queued.").model_dump(),
+        content=ApiResponse.ok(data={"job_id": job_id}, message="Email queued.").model_dump(),
     )
 
 
