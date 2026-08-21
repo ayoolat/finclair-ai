@@ -277,27 +277,27 @@ def _home_insight_rules(
 
     if pct is not None and pct > 100:
         lead = random.choice([
-            f"You've spent {symbol}{total_spent:,.0f} this month, {username} — that's {pct:.0f}% of your income.",
-            f"This month's spending hit {symbol}{total_spent:,.0f}, {username} — {pct:.0f}% of your income.",
-            f"{pct:.0f}% of your income spent this month, {username} — that's {symbol}{total_spent:,.0f} in total.",
+            f"You've spent {symbol}{total_spent:,.0f} this month, {username}. That's {pct:.0f}% of your income.",
+            f"This month's spending hit {symbol}{total_spent:,.0f}, {username}, {pct:.0f}% of your income.",
+            f"{pct:.0f}% of your income spent this month, {username}. That's {symbol}{total_spent:,.0f} in total.",
         ])
     elif pct is not None and pct >= 80:
         lead = random.choice([
-            f"You've used {pct:.0f}% of your monthly income already, {username} — {symbol}{total_spent:,.0f} of {symbol}{total_income:,.0f} gone.",
-            f"Getting close, {username} — {symbol}{total_spent:,.0f} spent puts you at {pct:.0f}% of your income.",
+            f"You've used {pct:.0f}% of your monthly income already, {username}, {symbol}{total_spent:,.0f} of {symbol}{total_income:,.0f} gone.",
+            f"Getting close, {username}. {symbol}{total_spent:,.0f} spent puts you at {pct:.0f}% of your income.",
             f"{symbol}{total_spent:,.0f} down, {username}. That's {pct:.0f}% of your monthly income.",
         ])
     elif pct is not None and pct >= 50:
         lead = random.choice([
-            f"Halfway through your income this month, {username} — {symbol}{total_spent:,.0f} spent so far.",
-            f"You're past the halfway mark, {username} — {symbol}{total_spent:,.0f} of your income spent.",
-            f"{symbol}{total_spent:,.0f} spent so far this month, {username} — just past the halfway point.",
+            f"Halfway through your income this month, {username}. {symbol}{total_spent:,.0f} spent so far.",
+            f"You're past the halfway mark, {username}. {symbol}{total_spent:,.0f} of your income spent.",
+            f"{symbol}{total_spent:,.0f} spent so far this month, {username}, just past the halfway point.",
         ])
     elif pct is not None:
         lead = random.choice([
-            f"Looking good, {username} — you've only spent {pct:.0f}% of your income ({symbol}{total_spent:,.0f}) so far this month.",
-            f"You're tracking well, {username} — {pct:.0f}% of income spent ({symbol}{total_spent:,.0f}) with room to breathe.",
-            f"Nice pace, {username} — only {symbol}{total_spent:,.0f} out the door, which is just {pct:.0f}% of your income.",
+            f"Looking good, {username}. You've only spent {pct:.0f}% of your income ({symbol}{total_spent:,.0f}) so far this month.",
+            f"You're tracking well, {username}. {pct:.0f}% of income spent ({symbol}{total_spent:,.0f}) with room to breathe.",
+            f"Nice pace, {username}. Only {symbol}{total_spent:,.0f} out the door, which is just {pct:.0f}% of your income.",
         ])
     else:
         lead = random.choice([
@@ -326,14 +326,14 @@ def _home_insight_rules(
         if top_pct >= 40:
             parts.append(random.choice([
                 f"{top_name} is taking up the most at {symbol}{top_amount:,.0f}.",
-                f"Most of that went to {top_name} — {symbol}{top_amount:,.0f}.",
+                f"Most of that went to {top_name}, {symbol}{top_amount:,.0f}.",
                 f"{top_name} is your biggest spend this month at {symbol}{top_amount:,.0f}.",
             ]))
         else:
             parts.append(random.choice([
                 f"Your top category is {top_name} at {symbol}{top_amount:,.0f}.",
                 f"{top_name} leads your spending at {symbol}{top_amount:,.0f}.",
-                f"You've spent the most on {top_name} — {symbol}{top_amount:,.0f} so far.",
+                f"You've spent the most on {top_name}, {symbol}{top_amount:,.0f} so far.",
             ]))
 
     if pct is not None and pct > 100:
@@ -344,9 +344,9 @@ def _home_insight_rules(
         ]))
     elif pct is not None and pct < 40 and week_change is not None and week_change <= -10:
         parts.append(random.choice([
-            "You're on a great streak — keep it going.",
-            "That's a solid pattern — keep it up.",
-            "Nice discipline this month — stay the course.",
+            "You're on a great streak. Keep it going.",
+            "That's a solid pattern. Keep it up.",
+            "Nice discipline this month. Stay the course.",
         ]))
 
     return " ".join(parts)
@@ -368,7 +368,7 @@ def _post_expense_rules(
         lead = random.choice([
             f"That's your {_ordinal(week_count)} {category_name} purchase this week.",
             f"This is your {_ordinal(week_count)} {category_name} spend this week.",
-            f"{category_name} again — {_ordinal(week_count)} time this week.",
+            f"{category_name} again, {_ordinal(week_count)} time this week.",
         ])
     elif category_name and last_month_cat_total > 0:
         cat_change = (this_month_cat_total - last_month_cat_total) / last_month_cat_total * 100
@@ -397,7 +397,7 @@ def _post_expense_rules(
             context = random.choice([
                 f"You've now used {pct:.0f}% of your monthly income.",
                 f"That puts you at {pct:.0f}% of your income for the month.",
-                f"You're at {pct:.0f}% of your monthly income — getting close.",
+                f"You're at {pct:.0f}% of your monthly income, getting close.",
             ])
         elif pct < 50:
             context = random.choice([
@@ -439,33 +439,33 @@ def _budget_insight_rules(
 
     if pct_used > 100:
         lead = random.choice([
-            f"You've gone over budget — {symbol}{spent:,.0f} spent against {symbol}{allocated:,.0f} allocated.",
-            f"Budget exceeded — {symbol}{spent:,.0f} out of {symbol}{allocated:,.0f} gone, and then some.",
+            f"You've gone over budget, {symbol}{spent:,.0f} spent against {symbol}{allocated:,.0f} allocated.",
+            f"Budget exceeded, {symbol}{spent:,.0f} out of {symbol}{allocated:,.0f} gone, and then some.",
             f"You're {pct_used - 100:.0f}% over your budget this month.",
         ])
     elif pct_used >= 90:
         lead = random.choice([
-            f"You're at {pct_used:.0f}% of your budget — just {symbol}{remaining:,.0f} left.",
-            f"Almost at your limit — {symbol}{remaining:,.0f} remaining from your {symbol}{allocated:,.0f} budget.",
+            f"You're at {pct_used:.0f}% of your budget, just {symbol}{remaining:,.0f} left.",
+            f"Almost at your limit, {symbol}{remaining:,.0f} remaining from your {symbol}{allocated:,.0f} budget.",
             f"{pct_used:.0f}% of your budget is gone with {symbol}{remaining:,.0f} to spare.",
         ])
     elif pct_used >= 75:
         lead = random.choice([
             f"You're at {pct_used:.0f}% of your budget with {symbol}{remaining:,.0f} remaining.",
-            f"Three quarters of your budget is used — {symbol}{remaining:,.0f} left to work with.",
+            f"Three quarters of your budget is used, {symbol}{remaining:,.0f} left to work with.",
             f"{symbol}{spent:,.0f} spent so far, leaving {symbol}{remaining:,.0f} in your budget.",
         ])
     elif pct_used >= 50:
         lead = random.choice([
-            f"Halfway through your budget — {symbol}{spent:,.0f} of {symbol}{allocated:,.0f} used.",
+            f"Halfway through your budget, {symbol}{spent:,.0f} of {symbol}{allocated:,.0f} used.",
             f"You've used {pct_used:.0f}% of your budget, with {symbol}{remaining:,.0f} still available.",
-            f"{symbol}{spent:,.0f} spent against a {symbol}{allocated:,.0f} budget — right at the midpoint.",
+            f"{symbol}{spent:,.0f} spent against a {symbol}{allocated:,.0f} budget, right at the midpoint.",
         ])
     else:
         lead = random.choice([
-            f"Looking good — only {pct_used:.0f}% of your budget used so far.",
+            f"Looking good, only {pct_used:.0f}% of your budget used so far.",
             f"You've spent {symbol}{spent:,.0f} of your {symbol}{allocated:,.0f} budget. Plenty of room left.",
-            f"Only {pct_used:.0f}% of your budget is gone — {symbol}{remaining:,.0f} still available.",
+            f"Only {pct_used:.0f}% of your budget is gone, {symbol}{remaining:,.0f} still available.",
         ])
 
     context: Optional[str] = None
@@ -482,12 +482,12 @@ def _budget_insight_rules(
         context = random.choice([
             f"Cutting back on {highest_spend_alloc.category_name} this week could help you stay within budget.",
             f"Reducing {highest_spend_alloc.category_name} spending would give you the most breathing room.",
-            f"{highest_spend_alloc.category_name} is your biggest spend — easing up there would help.",
+            f"{highest_spend_alloc.category_name} is your biggest spend. Easing up there would help.",
         ])
     elif pct_used >= 50 and highest_pct_alloc and highest_pct_alloc.pct_used >= 80:
         context = random.choice([
             f"Your {highest_pct_alloc.category_name} allocation is close to its limit at {highest_pct_alloc.pct_used:.0f}% used.",
-            f"Watch your {highest_pct_alloc.category_name} spending — it's at {highest_pct_alloc.pct_used:.0f}% of its allocation.",
+            f"Watch your {highest_pct_alloc.category_name} spending. It's at {highest_pct_alloc.pct_used:.0f}% of its allocation.",
             f"{highest_pct_alloc.category_name} is approaching its limit with {highest_pct_alloc.pct_used:.0f}% used.",
         ])
     elif pct_used < 50:
@@ -499,7 +499,7 @@ def _budget_insight_rules(
         else:
             context = random.choice([
                 "Keep it up and you'll finish the month in the green.",
-                "You're on track for a solid month — keep going.",
+                "You're on track for a solid month. Keep going.",
                 "Stay consistent and you'll end the month comfortably within budget.",
             ])
 

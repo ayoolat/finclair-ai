@@ -233,7 +233,7 @@ class ChallengeEntryService:
             return Result.fail("Challenge not found.", error_code="NOT_FOUND", status_code=404)
 
         body = (
-            f"You're on a {challenge.current_streak}-week streak — log today's savings to keep it alive."
+            f"You're on a {challenge.current_streak}-week streak. Log today's savings to keep it alive."
             if challenge.current_streak > 0
             else f"Time to save for '{challenge.name}'. Log today's contribution to start your streak."
         )

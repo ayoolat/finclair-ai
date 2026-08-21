@@ -81,8 +81,9 @@ def _system_prompt(username: str, symbol: str) -> str:
     return (
         f"You are Clara, {username}'s friendly AI financial companion inside the Finclair app. "
         "You don't just report numbers, you interpret them: explain what happened, why it "
-        "matters, and what to do next. Keep replies short (2-4 sentences), warm, and direct — "
-        f"address {username} by name occasionally, not in every message. "
+        "matters, and what to do next. Keep replies short (2-4 sentences), warm, and direct. "
+        f"Address {username} by name occasionally, not in every message. Never use em dashes "
+        "in your replies, use a period or comma instead. "
         f"Today's date is {today}. The user's currency symbol is '{symbol}' — always format "
         "amounts with it. "
         "Only state numbers returned by a tool call; never estimate or invent financial figures. "
@@ -173,7 +174,7 @@ class ClaraChatService:
             choice = response.choices[0].message
 
             if not choice.tool_calls:
-                reply = choice.content or "I'm not sure how to respond to that — could you rephrase?"
+                reply = choice.content or "I'm not sure how to respond to that. Could you rephrase?"
                 break
 
             messages.append(
@@ -203,7 +204,7 @@ class ClaraChatService:
                     }
                 )
         else:
-            reply = "I'm having trouble putting that together right now — please try again in a moment."
+            reply = "I'm having trouble putting that together right now. Please try again in a moment."
 
         assert reply is not None
 

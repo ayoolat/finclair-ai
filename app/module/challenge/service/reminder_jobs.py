@@ -31,7 +31,7 @@ async def send_friday_savings_reminders() -> None:
         push = PushService(db)
         for challenge in rows.scalars().all():
             body = (
-                f"You're on a {challenge.current_streak}-week streak — log today's savings to keep it alive."
+                f"You're on a {challenge.current_streak}-week streak. Log today's savings to keep it alive."
                 if challenge.current_streak > 0
                 else f"Time to save for '{challenge.name}'. Log today's contribution to start your streak."
             )

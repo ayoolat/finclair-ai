@@ -162,7 +162,7 @@ class WrappedService:
                         icon=top_category.icon,
                         amount=top_category.amount,
                         percentage=top_category_share,
-                        headline=f"{top_category.name} took the biggest bite — {top_category_share:.0f}% of your spending.",
+                        headline=f"{top_category.name} took the biggest bite, {top_category_share:.0f}% of your spending.",
                     )
                     if top_category
                     else None
@@ -265,14 +265,14 @@ def _savings_headline(
     savings_rate: float, symbol: str, total_saved: float, total_income: float, total_expenses: float, month_label: str
 ) -> str:
     if total_income == 0 and total_expenses == 0:
-        return f"Nothing tracked yet for {month_label} — log an income and expense to see your savings story."
+        return f"Nothing tracked yet for {month_label}. Log an income and expense to see your savings story."
     if total_saved <= 0:
-        return f"Nothing moved into Savings or Investment in {month_label} — set some money aside to start your streak."
+        return f"Nothing moved into Savings or Investment in {month_label}. Set some money aside to start your streak."
     if savings_rate >= 30:
-        return f"Your savings game is fire! You kept {savings_rate:.0f}% of your income — {symbol}{total_saved:,.0f} saved."
+        return f"Your savings game is fire! You kept {savings_rate:.0f}% of your income, {symbol}{total_saved:,.0f} saved."
     if savings_rate >= 10:
-        return f"Solid work — you saved {savings_rate:.0f}% of your income, {symbol}{total_saved:,.0f} in total."
-    return f"You saved {symbol}{total_saved:,.0f} this month — {savings_rate:.0f}% of your income. Room to grow next month."
+        return f"Solid work. You saved {savings_rate:.0f}% of your income, {symbol}{total_saved:,.0f} in total."
+    return f"You saved {symbol}{total_saved:,.0f} this month, {savings_rate:.0f}% of your income. Room to grow next month."
 
 
 def _personality_rules(
@@ -296,14 +296,14 @@ def _personality_rules(
         return MoneyPersonalityDto(
             key="big_spender",
             name="The Big Spender",
-            description="You spent more than you brought in this month. Living for the moment has its price — let's rein it in next month.",
+            description="You spent more than you brought in this month. Living for the moment has its price. Let's rein it in next month.",
         )
 
     if top_category_name and top_category_share >= 40:
         return MoneyPersonalityDto(
             key="category_enthusiast",
             name=f"The {top_category_name} Enthusiast",
-            description=f"{top_category_name} took up {top_category_share:.0f}% of your spending this month — clearly a priority for you.",
+            description=f"{top_category_name} took up {top_category_share:.0f}% of your spending this month, clearly a priority for you.",
         )
 
     if weekend_share >= 60:
@@ -324,13 +324,13 @@ def _personality_rules(
         return MoneyPersonalityDto(
             key="pragmatic_planner",
             name="The Pragmatic Planner",
-            description="You've stuck to your budget in most of your recent months — thoughtful, deliberate, and in control.",
+            description="You've stuck to your budget in most of your recent months, thoughtful, deliberate, and in control.",
         )
 
     return MoneyPersonalityDto(
         key="balanced_budgeter",
         name="The Balanced Budgeter",
-        description="Your spending is spread evenly across the things you care about — no single habit dominates your month.",
+        description="Your spending is spread evenly across the things you care about. No single habit dominates your month.",
     )
 
 
@@ -363,12 +363,12 @@ def _tip_rules(
     if savings_rate < 15:
         return TipDto(
             title="Build a small savings cushion",
-            body=f"You saved {savings_rate:.0f}% of your income this month. Try setting aside a fixed amount right after payday — even {symbol}5,000 adds up.",
+            body=f"You saved {savings_rate:.0f}% of your income this month. Try setting aside a fixed amount right after payday. Even {symbol}5,000 adds up.",
         )
 
     return TipDto(
         title="Put your savings to work",
-        body="You're saving well — consider setting a financial goal so that extra cash has a purpose.",
+        body="You're saving well. Consider setting a financial goal so that extra cash has a purpose.",
     )
 
 
@@ -415,7 +415,7 @@ def _badge_rules(
         key="month_tracked",
         name="Month Tracked",
         headline=f"Thanks for a great month, {username}!",
-        description="You showed up and tracked your money this month — that's the foundation everything else is built on.",
+        description="You showed up and tracked your money this month. That's the foundation everything else is built on.",
         months_on_track=months_on_track,
         months_tracked=months_tracked,
     )

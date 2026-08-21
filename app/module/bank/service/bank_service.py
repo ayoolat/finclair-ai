@@ -122,7 +122,7 @@ class BankService:
                     bank.user_id,
                     NotificationType.BANK_SYNC_COMPLETED,
                     title="Bank sync complete",
-                    body=f"{bank.name} synced — {synced} new transaction{'s' if synced != 1 else ''} added.",
+                    body=f"{bank.name} synced, {synced} new transaction{'s' if synced != 1 else ''} added.",
                     data={"bank_id": str(bank.id), "synced": synced},
                 )
 
