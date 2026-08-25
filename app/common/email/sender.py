@@ -1,18 +1,14 @@
 """
-Synchronous SMTP sender — runs inside RQ worker processes.
+Synchronous Brevo API sender — runs inside RQ worker processes.
 Do not call directly from FastAPI routes; enqueue via email_service instead.
 """
 
 import asyncio
-import smtplib
-import ssl
 import uuid
 from datetime import datetime, timezone
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.utils import formatdate, make_msgid
 from pathlib import Path
 
+import httpx
 from jinja2 import Environment, FileSystemLoader
 from rq import get_current_job
 
@@ -20,6 +16,8 @@ from app.common.enums.email import EmailStatus
 from app.core.config import settings
 from app.database.session import AsyncSessionLocal, engine
 from app.module.email.schema.email_log import EmailLog
+
+BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email"
 
 _template_dir = Path(__file__).parent / "templates"
 _jinja = Environment(loader=FileSystemLoader(str(_template_dir)), autoescape=True)
@@ -51,26 +49,21 @@ async def _record_attempt(log_id: str, *, success: bool, error: str | None = Non
 def send_email(*, log_id: str, to: str, subject: str, template: str, context: dict) -> None:
     html_body = _render(template, context)
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from}>"
-    msg["To"] = to
-    msg["Date"] = formatdate(localtime=True)
-    msg["Message-ID"] = make_msgid(domain=settings.smtp_from.split("@")[-1])
-    msg.attach(MIMEText(html_body, "html"))
+    payload = {
+        "sender": {"name": settings.smtp_from_name, "email": settings.smtp_from},
+        "to": [{"email": to}],
+        "subject": subject,
+        "htmlContent": html_body,
+    }
+    headers = {
+        "api-key": settings.brevo_api_key,
+        "content-type": "application/json",
+        "accept": "application/json",
+    }
 
-    ctx = ssl.create_default_context()
     try:
-        if settings.smtp_port == 465:
-            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=ctx) as server:
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(settings.smtp_from, to, msg.as_string())
-        else:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.ehlo()
-                server.starttls(context=ctx)
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.sendmail(settings.smtp_from, to, msg.as_string())
+        response = httpx.post(BREVO_ENDPOINT, json=payload, headers=headers, timeout=15)
+        response.raise_for_status()
     except Exception as exc:
         job = get_current_job()
         final_attempt = job is None or not job.retries_left

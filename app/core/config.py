@@ -17,11 +17,8 @@ class Settings(BaseSettings):
     # Redis / RQ — required, no default
     redis_url: str
 
-    # SMTP — all required, no defaults
-    smtp_host: str
-    smtp_port: int = 465
-    smtp_user: str
-    smtp_password: str
+    # Brevo — transactional email API
+    brevo_api_key: str
     smtp_from: str
     smtp_from_name: str = "Finclair AI"
 
