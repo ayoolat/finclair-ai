@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, SmallInteger, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,14 @@ class User(AuditMixin, Base):
     # unique login handle in `username`, which can be an unnatural thing to be
     # addressed by (e.g. "chinonso_test") in conversational surfaces like Clara.
     preferred_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Personalized daily expense-review reminder. The financial day is always
+    # 00:00–23:59 Africa/Lagos; this only moves *when* the nudge is sent, never
+    # the day boundary. The app maps its named presets (Morning / Afternoon /
+    # Evening / Late Night / Custom) to a concrete hour+minute and sends that.
+    reminder_hour: Mapped[int] = mapped_column(SmallInteger, default=21, nullable=False)
+    reminder_minute: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
+    daily_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     @property
     def display_name(self) -> str:

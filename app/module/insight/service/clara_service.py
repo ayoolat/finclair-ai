@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.income import IncomeReoccurrence
+from app.common.enums.notification import NotificationType
 from app.common.timezone import local_day_end, local_day_start, local_month_bounds
 from app.common.finance_queries import (
     category_totals,
@@ -25,6 +26,7 @@ from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.income.schema.income import Income
 from app.module.insight.dto.insight import HomeInsightDto
+from app.module.notification.schema.notification import Notification
 from app.module.user.schema.user import User
 
 
@@ -84,6 +86,11 @@ class ClaraService:
         if total_spent > 0 and self_reported_amt > 0:
             insight = f"{insight} This month's analysis is based on 🟢 {verified_pct:.0f}% verified transactions and 🟡 {self_reported_pct:.0f}% self-reported expenses."
 
+        if end_date >= today:
+            reconciliation = await self._yesterday_reconciliation(user_id, symbol, today)
+            if reconciliation:
+                insight = f"{insight} {reconciliation}"
+
         return Result.ok(HomeInsightDto(
             insight=insight,
             start_date=start_date,
@@ -94,6 +101,47 @@ class ClaraService:
             verified_pct=verified_pct,
             self_reported_pct=self_reported_pct,
         ))
+
+    async def _yesterday_reconciliation(
+        self, user_id: uuid.UUID, symbol: str, today: date
+    ) -> Optional[str]:
+        """If the user logged expenses yesterday *after* their evening spending
+        check went out, surface the corrected total and the amount added since,
+        so the daily figure they last saw is reconciled rather than silently
+        stale."""
+        yesterday = today - timedelta(days=1)
+        y_start = local_day_start(yesterday)
+        y_end = local_day_end(yesterday)
+
+        check_row = await self._db.execute(
+            select(Notification)
+            .where(
+                Notification.user_id == user_id,
+                Notification.type == NotificationType.DAILY_EXPENSE_SUMMARY.value,
+                Notification.created_at >= y_start,
+                Notification.created_at <= y_end,
+            )
+            .order_by(Notification.created_at.desc())
+            .limit(1)
+        )
+        check = check_row.scalar_one_or_none()
+        if check is None or not check.data or check.data.get("total") is None:
+            return None
+
+        try:
+            checked_total = float(check.data["total"])
+        except (TypeError, ValueError):
+            return None
+
+        actual_total = await expense_total(self._db, user_id, y_start, y_end)
+        delta = actual_total - checked_total
+        if delta < 1:
+            return None
+
+        return (
+            f"Yesterday's spending came to {symbol}{actual_total:,.0f}. "
+            f"You added {symbol}{delta:,.0f} after your evening check-in."
+        )
 
     async def _current_income_cycle(self, user_id: uuid.UUID, today: date) -> tuple[date, date]:
         calendar_month = (

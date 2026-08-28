@@ -4,6 +4,9 @@ Simple asyncio-based daily task scheduler.
 `schedule_daily` tasks run once at startup, then repeat every 24 hours.
 `schedule_daily_at` tasks wait until the next occurrence of a fixed local
 clock time, then repeat every 24 hours from there.
+`schedule_every_minutes` tasks align to the next N-minute wall-clock boundary,
+then repeat every N minutes — used by dispatchers that fan a fixed cadence out
+to per-user schedules (e.g. personalized daily reminder times).
 """
 import asyncio
 import logging
@@ -54,3 +57,28 @@ def schedule_daily_at(
 ) -> asyncio.Task:  # type: ignore[type-arg]
     """Register a coroutine function to run once daily at a fixed Africa/Lagos clock time. Call from lifespan."""
     return asyncio.create_task(_run_daily_at(name, hour, minute, task_fn), name=name)
+
+
+def _seconds_until_next_interval(minutes: int) -> float:
+    now = datetime.now(APP_TZ)
+    step = timedelta(minutes=minutes)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elapsed = now - midnight
+    next_boundary = midnight + (int(elapsed / step) + 1) * step
+    return (next_boundary - now).total_seconds()
+
+
+async def _run_every_minutes(name: str, minutes: int, task_fn: Callable[[], Coroutine[Any, Any, None]]) -> None:
+    while True:
+        await asyncio.sleep(_seconds_until_next_interval(minutes))
+        try:
+            await task_fn()
+        except Exception as exc:
+            logger.error("Scheduled task %r failed: %s", name, exc)
+
+
+def schedule_every_minutes(
+    name: str, minutes: int, task_fn: Callable[[], Coroutine[Any, Any, None]]
+) -> asyncio.Task:  # type: ignore[type-arg]
+    """Register a coroutine function to run every `minutes` minutes, aligned to the wall clock. Call from lifespan."""
+    return asyncio.create_task(_run_every_minutes(name, minutes, task_fn), name=name)

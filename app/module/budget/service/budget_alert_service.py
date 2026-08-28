@@ -6,15 +6,21 @@ main.py's lifespan:
   - check_no_spend_weekend: congratulates a user who logged zero expenses over
     the weekend that just ended.
   - check_budget_health: warns when a budget (overall or a single category
-    allocation) is approaching its limit, and congratulates when a finished
-    budget period came in under budget.
+    allocation) crosses 80% / 90% / 100% of its limit, and congratulates when a
+    finished budget period came in under budget.
 
 Both award badges from the shared catalog (see app/module/challenge) and send
 a push notification through the shared PushService.
+
+`evaluate_budget_thresholds` is the real-time counterpart of the daily
+80/90/100 check — the expense create path calls it right after a new expense
+lands so a threshold crossing is flagged immediately, not up to a day later.
 """
 
 import logging
+import uuid
 from datetime import date, datetime, timedelta
+from typing import Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -33,7 +39,7 @@ from app.module.notification.service.push_service import PushService
 
 logger = logging.getLogger(__name__)
 
-NEAR_LIMIT_THRESHOLD = 0.9
+BUDGET_ALERT_THRESHOLDS = (80, 90, 100)
 
 
 async def check_no_spend_weekend() -> None:
@@ -78,7 +84,8 @@ async def check_no_spend_weekend() -> None:
 
 
 async def check_budget_health() -> None:
-    """Runs daily — warns when nearing a limit, congratulates on a clean finish."""
+    """Runs daily as a backstop for the real-time 80/90/100 checks, and
+    congratulates on a clean finish when a budget period has just ended."""
     today = date.today()
     async with AsyncSessionLocal() as db:
         push = PushService(db)
@@ -91,13 +98,7 @@ async def check_budget_health() -> None:
             .where(Budget.start_date <= today, Budget.end_date >= today)
         )
         for budget in active_rows.scalars().all():
-            spent = await _budget_spent(db, budget)
-            await _maybe_near_limit(db, notifications, budget, None, "your overall budget", spent, float(budget.amount_allocated))
-            for alloc in budget.allocations:
-                cat_spent = await _category_spent(db, budget, alloc.category_id)
-                await _maybe_near_limit(
-                    db, notifications, budget, alloc.category_id, alloc.category.name, cat_spent, float(alloc.amount_allocated)
-                )
+            await _evaluate_budget(db, notifications, budget)
 
         ended_rows = await db.execute(
             select(Budget)
@@ -157,23 +158,85 @@ async def _alert_exists(db, budget_id, category_id, alert_type: str) -> bool:
     return row.first() is not None
 
 
-async def _maybe_near_limit(
+async def evaluate_budget_thresholds(
+    db,
+    notifications: NotificationService,
+    user_id: uuid.UUID,
+    category_ids: Optional[list[uuid.UUID]] = None,
+) -> None:
+    """Real-time 80/90/100 check for one user, called right after an expense is
+    created. `category_ids` limits the per-allocation checks to the categories
+    the new expense touched; the overall-budget check always runs."""
+    today = date.today()
+    rows = await db.execute(
+        select(Budget)
+        .options(selectinload(Budget.allocations).selectinload(BudgetAllocation.category))
+        .where(Budget.user_id == user_id, Budget.start_date <= today, Budget.end_date >= today)
+    )
+    budgets = list(rows.scalars().all())
+    if not budgets:
+        return
+    for budget in budgets:
+        await _evaluate_budget(db, notifications, budget, category_ids)
+    await db.commit()
+
+
+async def _evaluate_budget(
+    db,
+    notifications: NotificationService,
+    budget: Budget,
+    category_ids: Optional[list[uuid.UUID]] = None,
+) -> None:
+    spent = await _budget_spent(db, budget)
+    await _maybe_threshold_alert(
+        db, notifications, budget, None, "your overall budget", spent, float(budget.amount_allocated)
+    )
+    for alloc in budget.allocations:
+        if category_ids is not None and alloc.category_id not in category_ids:
+            continue
+        cat_spent = await _category_spent(db, budget, alloc.category_id)
+        await _maybe_threshold_alert(
+            db, notifications, budget, alloc.category_id, alloc.category.name, cat_spent, float(alloc.amount_allocated)
+        )
+
+
+async def _maybe_threshold_alert(
     db, notifications: NotificationService, budget: Budget, category_id, label: str, spent: float, allocated: float
 ) -> None:
-    if allocated <= 0 or spent / allocated < NEAR_LIMIT_THRESHOLD:
+    if allocated <= 0:
         return
-    if await _alert_exists(db, budget.id, category_id, "near_limit"):
+    pct = spent / allocated * 100
+    crossed = [t for t in BUDGET_ALERT_THRESHOLDS if pct >= t]
+    if not crossed:
         return
 
-    pct = spent / allocated * 100
+    highest = crossed[-1]
+    if await _alert_exists(db, budget.id, category_id, f"threshold_{highest}"):
+        return
+
+    # Record every crossed threshold so a jump straight past 80/90 to 100 doesn't
+    # fire the lower ones retroactively on a later run — only the highest notifies.
+    for t in crossed:
+        if not await _alert_exists(db, budget.id, category_id, f"threshold_{t}"):
+            db.add(BudgetAlert(budget_id=budget.id, category_id=category_id, alert_type=f"threshold_{t}"))
+
+    if highest >= 100:
+        ntype = NotificationType.BUDGET_LIMIT_REACHED
+        title = "Budget limit reached"
+    else:
+        ntype = NotificationType.BUDGET_NEAR_LIMIT
+        title = "Approaching your budget limit"
     await notifications.notify(
         budget.user_id,
-        NotificationType.BUDGET_NEAR_LIMIT,
-        title="Approaching your budget limit",
+        ntype,
+        title=title,
         body=f"You've used {pct:.0f}% of {label} this month.",
-        data={"budget_id": str(budget.id), "category_id": str(category_id) if category_id else None},
+        data={
+            "budget_id": str(budget.id),
+            "category_id": str(category_id) if category_id else None,
+            "threshold": str(highest),
+        },
     )
-    db.add(BudgetAlert(budget_id=budget.id, category_id=category_id, alert_type="near_limit"))
 
 
 async def _maybe_completed(db, push: PushService, badges: BadgeService, budget: Budget, category_id, label: str, period: str) -> None:

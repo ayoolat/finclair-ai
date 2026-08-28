@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # OTP
     otp_expire_minutes: int = 10
 
+    # Event-triggered expense alerts (heuristics, no per-user config)
+    large_txn_multiplier: float = 2.5      # single expense >= N x the category's trailing avg
+    large_txn_min_history: int = 5         # prior transactions needed before the heuristic fires
+    unusual_daily_multiplier: float = 2.0  # today's category total >= N x its usual daily average
+
     # Cross-server email queue access — required, no default
     email_api_key: str
 

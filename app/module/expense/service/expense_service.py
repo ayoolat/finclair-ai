@@ -31,6 +31,7 @@ from app.module.expense.dto.expense import (
 from app.module.expense.schema.expense import Expense
 from app.module.expense.schema.expense_category import expense_categories
 from app.module.expense.schema.expense_item import ExpenseItem
+from app.module.expense.service.expense_event_alerts import run_expense_alerts
 from app.module.expense.service.expense_streak_service import (
     ExpenseStreakService,
     StreakUpdate,
@@ -39,6 +40,10 @@ from app.module.expense.service.expense_streak_service import (
 from app.module.file.schema.file import File
 from app.module.income.schema.income import Income
 from app.module.insight.service.clara_service import ClaraService, get_clara_service
+from app.module.notification.service.notification_service import (
+    NotificationService,
+    get_notification_service,
+)
 from app.module.notification.service.push_service import PushService, get_push_service
 
 _RECEIPT_LOW_CONFIDENCE = 0.5
@@ -51,11 +56,13 @@ class ExpenseService:
         clara: ClaraService,
         streaks: ExpenseStreakService,
         push: PushService,
+        notifications: NotificationService,
     ) -> None:
         self._db = db
         self._clara = clara
         self._streaks = streaks
         self._push = push
+        self._notifications = notifications
         self._storage = get_storage_provider()
         self._ocr = get_ocr_provider()
 
@@ -243,6 +250,7 @@ class ExpenseService:
         dto = ExpenseResponseDto.model_validate(expense)
         dto.clara_insight = await self._clara.post_expense_insight(user_id, expense)  # type: ignore[union-attr]
         await self._notify_streak_milestone(user_id, streak_update)
+        await run_expense_alerts(self._db, self._notifications, user_id, expense)  # type: ignore[arg-type]
         return Result.ok(dto, status_code=201)
 
     # ── Create from receipt (OCR) ─────────────────────────────────────────────
@@ -320,6 +328,7 @@ class ExpenseService:
         await self._db.commit()
         expense = await self._load(expense.id, user_id)  # type: ignore[assignment]
         await self._notify_streak_milestone(user_id, streak_update)
+        await run_expense_alerts(self._db, self._notifications, user_id, expense)  # type: ignore[arg-type]
         return Result.ok(ExpenseResponseDto.model_validate(expense), status_code=201)  # type: ignore[arg-type]
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -623,8 +632,9 @@ def get_expense_service(
     clara: ClaraService = Depends(get_clara_service),
     streaks: ExpenseStreakService = Depends(get_expense_streak_service),
     push: PushService = Depends(get_push_service),
+    notifications: NotificationService = Depends(get_notification_service),
 ) -> ExpenseService:
-    return ExpenseService(db, clara, streaks, push)
+    return ExpenseService(db, clara, streaks, push, notifications)
 
 
 _RECEIPT_AMOUNT_TOLERANCE_PCT = Decimal("0.01")  # 1% allowed drift (rounding, OCR noise)
