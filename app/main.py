@@ -36,6 +36,7 @@ from app.module.groups.router import router as groups_router
 from app.module.income.router import router as income_router
 from app.module.marketing.router import router as marketing_router
 from app.module.notification.router import router as notification_router
+from app.module.score.router import router as score_router
 from app.module.subscription.router import router as subscription_router
 from app.module.subscription.service.billing_job import process_subscription_billing
 from app.module.user.router import router as user_router
@@ -103,6 +104,7 @@ app.include_router(subscription_router, prefix="/api/v1")
 app.include_router(wrapped_router, prefix="/api/v1")
 app.include_router(challenge_router, prefix="/api/v1")
 app.include_router(notification_router, prefix="/api/v1")
+app.include_router(score_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
