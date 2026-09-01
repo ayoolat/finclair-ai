@@ -257,6 +257,9 @@ async def seed_badges() -> None:
         {"key": "expense_streak_30_days", "name": "One Month Streak", "description": "Logged expenses 30 days in a row.", "icon_name": "flame", "category": "expense_streak"},
         {"key": "expense_streak_60_days", "name": "Two Month Streak", "description": "Logged expenses 60 days in a row.", "icon_name": "flame", "category": "expense_streak"},
         {"key": "expense_streak_100_days", "name": "Century Streak", "description": "Logged expenses 100 days in a row.", "icon_name": "flame", "category": "expense_streak"},
+        {"key": "score_on_track", "name": "On Track", "description": "Reached a Finclar Score of 50.", "icon_name": "target", "category": "finclar_score"},
+        {"key": "score_disciplined", "name": "Disciplined", "description": "Reached a Finclar Score of 70.", "icon_name": "shield", "category": "finclar_score"},
+        {"key": "score_elite", "name": "Financially Elite", "description": "Reached a Finclar Score of 85.", "icon_name": "star", "category": "finclar_score"},
     ]
     try:
         async with AsyncSessionLocal() as session:
