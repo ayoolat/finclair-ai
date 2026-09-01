@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.finance_queries import category_total_by_names, category_totals, expense_total, income_for_range
 from app.common.response import Result
+from app.common.timezone import APP_TZ, local_month_bounds
 from app.database.session import get_db
 from app.module.budget.schema.budget import Budget
 from app.module.expense.schema.expense import Expense
@@ -50,7 +51,7 @@ class WrappedService:
         if user is None:
             return Result.fail("User not found.", error_code="NOT_FOUND", status_code=404)
 
-        today = date.today()
+        today = datetime.now(APP_TZ).date()
         year = year or today.year
         month = month or today.month
         if not 1 <= month <= 12:
@@ -59,8 +60,7 @@ class WrappedService:
         last_day = calendar.monthrange(year, month)[1]
         start_date = date(year, month, 1)
         end_date = date(year, month, last_day)
-        dt_start = datetime(year, month, 1)
-        dt_end = datetime(year, month, last_day, 23, 59, 59)
+        dt_start, dt_end = local_month_bounds(year, month)
 
         symbol = "₦" if user.default_currency == "NGN" else user.default_currency
 
@@ -221,8 +221,7 @@ class WrappedService:
             last_day = calendar.monthrange(y, m)[1]
             month_start = date(y, m, 1)
             month_end = date(y, m, last_day)
-            dt_start = datetime(y, m, 1)
-            dt_end = datetime(y, m, last_day, 23, 59, 59)
+            dt_start, dt_end = local_month_bounds(y, m)
             month_expenses, month_income, month_savings_category_expenses = await asyncio.gather(
                 expense_total(self._db, user_id, dt_start, dt_end),
                 income_for_range(self._db, user_id, month_start, month_end),

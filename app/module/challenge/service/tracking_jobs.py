@@ -10,7 +10,7 @@ import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.common.enums.challenge import ChallengeStatus, ChallengeType
 from app.common.finance_queries import expense_total, expense_total_for_category
@@ -124,6 +124,7 @@ async def check_budget_category_challenges() -> None:
 
             if spent <= float(challenge.overall_target):
                 challenge.status = ChallengeStatus.COMPLETED
+                challenge.concluded_at = func.now()
                 awarded = await badges.award(
                     challenge.user_id, "budget_category_goal_reached", challenge_id=challenge.id
                 )
@@ -136,6 +137,7 @@ async def check_budget_category_challenges() -> None:
                     )
             else:
                 challenge.status = ChallengeStatus.FAILED
+                challenge.concluded_at = func.now()
                 await push.send_to_user(
                     challenge.user_id,
                     title="Challenge missed",

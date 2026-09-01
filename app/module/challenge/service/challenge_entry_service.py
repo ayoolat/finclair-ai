@@ -151,6 +151,7 @@ class ChallengeEntryService:
         )
         if just_completed:
             challenge.status = ChallengeStatus.COMPLETED
+            challenge.concluded_at = func.now()
             await self._badges.award(user_id, "friday_savings_goal_reached", challenge_id=challenge.id)
 
         await self._db.commit()

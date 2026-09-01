@@ -19,12 +19,13 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import Depends
-from sqlalchemy import func, or_, select
+from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.enums.challenge import ChallengeStatus
 from app.common.finance_queries import expense_total_for_category
 from app.common.response import Result
+from app.common.timezone import APP_TZ, local_month_bounds
 from app.database.session import get_db
 from app.module.budget.schema.budget import Budget
 from app.module.budget.schema.budget_allocation import BudgetAllocation
@@ -124,7 +125,7 @@ class ScoreService:
         if user is None:
             return Result.fail("User not found.", error_code="NOT_FOUND", status_code=404)
 
-        today = date.today()
+        today = datetime.now(APP_TZ).date()
         year = year or today.year
         month = month or today.month
         if not 1 <= month <= 12:
@@ -138,7 +139,9 @@ class ScoreService:
         history = await self._history(user_id, year, month, today)
         previous = next((p.score for p in history if (p.year, p.month) == _shift_month(year, month, -1)), None)
 
-        if has_data:
+        # Milestone badges reflect present standing, so only the current month
+        # can unlock them — opening an old high-scoring month shouldn't.
+        if has_data and (year, month) == (today.year, today.month):
             await self._award_score_badges(user_id, score)
         await self._db.commit()
 
@@ -170,8 +173,9 @@ class ScoreService:
         self, user_id: uuid.UUID, year: int, month: int, today: date
     ) -> tuple[list[ScoreComponentDto], float, bool]:
         period_start, period_end = _month_bounds(year, month)
-        dt_start = datetime(year, month, 1)
-        dt_end = datetime(period_end.year, period_end.month, period_end.day, 23, 59, 59)
+        # Africa/Lagos-aware window, matching how the budget module and Money
+        # Wrapped bound a month against Expense.expense_date (TIMESTAMPTZ).
+        dt_start, dt_end = local_month_bounds(year, month)
 
         budget = _Component("budget_adherence", "Budget adherence", "Staying within your budget limits.", WEIGHT_BUDGET)
         savings = _Component("savings_consistency", "Savings consistency", "Saving regularly, in steady amounts.", WEIGHT_SAVINGS)
@@ -181,7 +185,7 @@ class ScoreService:
         await self._score_budget(budget, user_id, period_start, dt_start, dt_end)
         await self._score_savings(savings, user_id, period_start, period_end, dt_start, dt_end)
         await self._score_tracking(tracking, user_id, period_start, period_end, dt_start, dt_end, today)
-        await self._score_goals(goals, user_id, period_start, period_end)
+        await self._score_goals(goals, user_id, period_start, period_end, dt_start, dt_end)
 
         parts = [budget, savings, tracking, goals]
         scored = [c for c in parts if c.has_data]
@@ -276,7 +280,8 @@ class ScoreService:
 
         per_week: dict[int, float] = {}
         for when, amount in list(entry_rows.all()) + list(savings_rows.all()):
-            week = ((when.date() if isinstance(when, datetime) else when) - period_start).days // 7
+            day = when.astimezone(APP_TZ).date() if isinstance(when, datetime) else when
+            week = (day - period_start).days // 7
             per_week[week] = per_week.get(week, 0.0) + float(amount or 0)
 
         total_weeks = ((period_end - period_start).days // 7) + 1
@@ -323,7 +328,7 @@ class ScoreService:
         days_elapsed = (last_day - period_start).days + 1
 
         logged = await self._db.scalar(
-            select(func.count(func.distinct(func.date(Expense.expense_date)))).where(
+            select(func.count(func.distinct(cast(Expense.expense_date, Date)))).where(
                 Expense.user_id == user_id,
                 Expense.deleted_at.is_(None),
                 Expense.expense_date >= dt_start,
@@ -347,31 +352,50 @@ class ScoreService:
         )
 
     async def _score_goals(
-        self, component: _Component, user_id: uuid.UUID, period_start: date, period_end: date
+        self,
+        component: _Component,
+        user_id: uuid.UUID,
+        period_start: date,
+        period_end: date,
+        dt_start: datetime,
+        dt_end: datetime,
     ) -> None:
-        rows = await self._db.execute(
+        # A monthly metric only judges challenges that actually reached an
+        # outcome *within this month*: COMPLETED (hit the target) or FAILED (a
+        # budget_category challenge that ended over its cap). One the user
+        # CANCELLED themselves isn't a discipline miss and is left out.
+        outcome_rows = await self._db.execute(
             select(SavingsChallenge.status).where(
                 SavingsChallenge.user_id == user_id,
+                SavingsChallenge.concluded_at >= dt_start,
+                SavingsChallenge.concluded_at <= dt_end,
+                SavingsChallenge.status.in_([ChallengeStatus.COMPLETED, ChallengeStatus.FAILED]),
+            )
+        )
+        outcomes = [s for (s,) in outcome_rows.all()]
+        if outcomes:
+            completed = sum(1 for s in outcomes if s == ChallengeStatus.COMPLETED)
+            component.set(
+                completed / len(outcomes) * 100,
+                f"Completed {completed} of {len(outcomes)} challenges that ended this month.",
+            )
+            return
+
+        # Nothing concluded this month — is anything still running that could?
+        running = await self._db.scalar(
+            select(func.count())
+            .select_from(SavingsChallenge)
+            .where(
+                SavingsChallenge.user_id == user_id,
+                SavingsChallenge.status == ChallengeStatus.ACTIVE,
                 SavingsChallenge.start_date <= period_end,
                 or_(SavingsChallenge.end_date.is_(None), SavingsChallenge.end_date >= period_start),
             )
         )
-        statuses = [s for (s,) in rows.all()]
-        if not statuses:
-            component.no_data("No challenges set for this month.")
-            return
-
-        # Still-running challenges shouldn't count as failures — only settled ones are judged.
-        settled = [s for s in statuses if s != ChallengeStatus.ACTIVE]
-        if not settled:
-            component.no_data(f"{len(statuses)} challenge(s) still in progress.")
-            return
-
-        completed = sum(1 for s in settled if s == ChallengeStatus.COMPLETED)
-        component.set(
-            completed / len(settled) * 100,
-            f"Completed {completed} of {len(settled)} finished challenges.",
-        )
+        if running:
+            component.no_data(f"{running} challenge(s) still in progress.")
+        else:
+            component.no_data("No challenges concluded this month.")
 
     async def _store(
         self,

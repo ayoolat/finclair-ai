@@ -60,6 +60,10 @@ class SavingsChallenge(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=ChallengeStatus.ACTIVE)
+    # When the challenge reached a terminal state (completed / failed /
+    # cancelled); null while ACTIVE. Lets a monthly metric like the Finclar
+    # Score attribute the outcome to the month it actually happened in.
+    concluded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

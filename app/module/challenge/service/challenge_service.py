@@ -124,6 +124,7 @@ class ChallengeService:
             return Result.fail("Only an active challenge can be cancelled.", status_code=400)
 
         challenge.status = ChallengeStatus.CANCELLED
+        challenge.concluded_at = func.now()
         await self._db.commit()
         return Result.ok(None)
 
