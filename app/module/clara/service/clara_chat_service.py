@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from fastapi import Depends
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.clients.google_docs_client import get_app_help_content
 from app.common.clients.openai_client import get_openai_client
 from app.common.dto.pagination import PageQueryDto
+from app.common.timezone import APP_TZ
 from app.common.response import PaginatedResponse, Result
 from app.database.session import get_db
 from app.module.clara.dto.clara import ClaraChatResponseDto, ClaraMessageDto
@@ -33,10 +34,13 @@ _TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "get_expense_summary",
             "description": (
-                "Get the user's income/expense summary for one month: total spent, "
-                "month-over-month change, category breakdown, monthly income, and a "
-                "6-month income-vs-expense trend suitable for charting. Use this for "
-                "any question about spending, income, or budget usage in a given period."
+                "Get the user's income/expense summary for ONE WHOLE CALENDAR MONTH: total "
+                "spent, month-over-month change, category breakdown, monthly income, and a "
+                "6-month income-vs-expense trend suitable for charting. Use this ONLY when the "
+                "user asks about a full calendar month ('this month', 'August', 'last month') "
+                "or their overall/monthly picture. For a week, a few days, 'today', "
+                "'yesterday', 'last 7 days', a year, or any custom date range, use "
+                "get_spending_for_period instead, never this tool."
             ),
             "parameters": {
                 "type": "object",
@@ -53,6 +57,52 @@ _TOOLS: list[dict[str, Any]] = [
                     },
                 },
                 "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_spending_for_period",
+            "description": (
+                "Get the user's spending over a specific window that is NOT a whole calendar "
+                "month: a week, a few days, today, yesterday, the last N days, a year, or a "
+                "custom date range. Returns total spent, transaction count, category breakdown, "
+                "and the change vs. the immediately preceding window of the same length. Use "
+                "this for 'this week', 'last week', 'today', 'yesterday', 'the last 7 days', "
+                "'so far this year', 'between the 1st and the 15th', etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "enum": [
+                            "today",
+                            "yesterday",
+                            "this_week",
+                            "last_week",
+                            "last_7_days",
+                            "last_30_days",
+                            "this_year",
+                            "last_year",
+                            "custom",
+                        ],
+                        "description": (
+                            "The window to summarize. Weeks run Monday to Sunday. Use 'custom' "
+                            "only when the user gives explicit start and end dates."
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "ISO date (YYYY-MM-DD). Required only when period is 'custom'.",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "ISO date (YYYY-MM-DD). Required only when period is 'custom'.",
+                    },
+                },
+                "required": ["period"],
             },
         },
     },
@@ -96,8 +146,18 @@ def _system_prompt(username: str, symbol: str) -> str:
         "as an actual expense or income in the app. If get_expense_summary comes back with nothing "
         "for a period, say so plainly (e.g. 'I don't have anything saved for that month yet') rather "
         "than leaving it ambiguous whether you checked. "
-        "Call get_expense_summary whenever the user asks about spending, income, or a time period, "
-        "even implicitly (e.g. 'how did I do?' refers to the period already discussed). "
+        "You have two spending tools. Use get_expense_summary ONLY for a whole calendar month "
+        "('this month', 'last month', 'August', overall monthly picture). Use "
+        "get_spending_for_period for anything else: a week, 'today', 'yesterday', 'last 7 days', "
+        "a year to date, or a custom date range. Pick the tool that matches the period the user "
+        "asked for, never substitute a different period because a tool is more convenient. Call "
+        "a tool whenever the user asks about spending, income, or a time period, even implicitly "
+        "(e.g. 'how did I do?' refers to the period already discussed). "
+        "Always report results for the exact period the tool covered, and name that period or "
+        "its date range in your reply (e.g. 'This week so far (Sep 1 to Sep 4)...'). Never call "
+        "a month's figures a week's, or a week's a month's. If you could not get data for the "
+        "period the user actually asked about, say so plainly instead of answering with a "
+        "different period's numbers. "
         "Call get_app_help for ANY question about the app itself, not just explicit 'how do I' "
         "requests — this includes 'what is [screen/button/feature]', 'what does X do', 'what "
         "happens if/when I tap/do X', and 'where do I find X'. If a question could plausibly be "
@@ -111,6 +171,57 @@ def _system_prompt(username: str, symbol: str) -> str:
         "one short sentence and steer the conversation back to their finances or the app — do not "
         "answer the off-topic question."
     )
+
+
+def _fmt(d: date) -> str:
+    # "Sep 1" / "Sep 1, 2026" is added by the caller where the year matters.
+    return f"{d.strftime('%b')} {d.day}"
+
+
+def _resolve_period(
+    period: str, start_raw: Optional[str], end_raw: Optional[str]
+) -> Optional[tuple[date, date, str]]:
+    """Map a period name (and optional explicit dates) to an inclusive
+    (start, end, human label) triple, anchored to today in the app's timezone.
+    Returns None if a custom range is requested without valid dates."""
+    today = datetime.now(APP_TZ).date()
+
+    if period == "custom":
+        if not start_raw or not end_raw:
+            return None
+        try:
+            start = date.fromisoformat(start_raw)
+            end = date.fromisoformat(end_raw)
+        except ValueError:
+            return None
+        if end < start:
+            start, end = end, start
+        label = f"{_fmt(start)} to {_fmt(end)}, {end.year}"
+        return start, end, label
+
+    if period == "today":
+        return today, today, "today"
+    if period == "yesterday":
+        y = today - timedelta(days=1)
+        return y, y, "yesterday"
+    if period == "this_week":
+        start = today - timedelta(days=today.weekday())
+        label = "this week" if today.weekday() == 6 else "this week so far"
+        return start, today, label
+    if period == "last_week":
+        this_monday = today - timedelta(days=today.weekday())
+        start = this_monday - timedelta(days=7)
+        return start, start + timedelta(days=6), "last week"
+    if period == "last_7_days":
+        return today - timedelta(days=6), today, "the last 7 days"
+    if period == "last_30_days":
+        return today - timedelta(days=29), today, "the last 30 days"
+    if period == "this_year":
+        return date(today.year, 1, 1), today, "so far this year"
+    if period == "last_year":
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31), f"{today.year - 1}"
+
+    return None
 
 
 def _to_message_dto(m: ClaraMessage) -> ClaraMessageDto:
@@ -242,6 +353,21 @@ class ClaraChatService:
             if not content:
                 return json.dumps({"error": "No app-help content is available yet."}), None
             return json.dumps({"app_help": content}), None
+
+        if name == "get_spending_for_period":
+            resolved = _resolve_period(
+                args.get("period", ""), args.get("start_date"), args.get("end_date")
+            )
+            if resolved is None:
+                return json.dumps({
+                    "error": "Could not resolve that period. Ask the user for exact start and end dates."
+                }), None
+            start, end, label = resolved
+            result = await self._expenses.get_period_spending(user_id, start, end, label)
+            if result.is_err or result.data is None:
+                logger.error("Clara tool get_spending_for_period failed for %s: %s", user_id, result.error)
+                return json.dumps({"error": result.error or "Failed to fetch spending."}), None
+            return result.data.model_dump_json(), None
 
         if name != "get_expense_summary":
             return json.dumps({"error": f"Unknown tool '{name}'."}), None

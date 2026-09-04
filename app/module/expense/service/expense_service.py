@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.common.enums.expense import ExpenseDirection, ExpenseStatus, ExpenseType
 from app.common.enums.income import IncomeReoccurrence
-from app.common.timezone import local_month_bounds
+from app.common.timezone import local_day_end, local_day_start, local_month_bounds
 from app.common.ocr.factory import get_ocr_provider
 from app.common.response import PaginationMeta, Result
 from app.common.storage.factory import get_storage_provider
@@ -26,6 +26,7 @@ from app.module.expense.dto.expense import (
     ExpenseSummaryDto,
     IncomeExpenseTrendPointDto,
     MonthlyTrendPointDto,
+    PeriodSpendingDto,
     UpdateExpenseDto,
 )
 from app.module.expense.schema.expense import Expense
@@ -544,6 +545,97 @@ class ExpenseService:
                 monthly_trend=monthly_trend,
                 income_expense_trend=income_trend,
                 monthly_income=monthly_income,
+            )
+        )
+
+    # ── Period spending (arbitrary date range) ────────────────────────────────
+
+    async def get_period_spending(
+        self,
+        user_id: uuid.UUID,
+        start: date,
+        end: date,
+        period_label: str,
+    ) -> Result[PeriodSpendingDto]:
+        if end < start:
+            return Result.fail(
+                "end date must be on or after start date.",
+                error_code="INVALID_RANGE",
+                status_code=400,
+            )
+
+        range_start = local_day_start(start)
+        range_end = local_day_end(end)
+
+        total_expense = await self._sum_expenses(user_id, range_start, range_end)
+
+        count_row = await self._db.execute(
+            select(func.count(Expense.id)).where(
+                Expense.user_id == user_id,
+                Expense.deleted_at.is_(None),
+                Expense.expense_date >= range_start,
+                Expense.expense_date <= range_end,
+            )
+        )
+        transaction_count = int(count_row.scalar_one() or 0)
+
+        # ── Previous window of the same length, immediately before ────────
+        span_days = (end - start).days
+        prev_end = start - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=span_days)
+        prev_total = await self._sum_expenses(
+            user_id, local_day_start(prev_start), local_day_end(prev_end)
+        )
+        if prev_total > 0:
+            change_pct: Optional[float] = abs((total_expense - prev_total) / prev_total * 100)
+            change_direction: Optional[str] = (
+                "less" if total_expense < prev_total
+                else "more" if total_expense > prev_total
+                else "same"
+            )
+        else:
+            change_pct = None
+            change_direction = None
+
+        # ── Category breakdown for the range ─────────────────────────────
+        cat_rows = await self._db.execute(
+            select(
+                Category.name,
+                func.sum(Expense.amount).label("total"),
+                func.count(Expense.id).label("tx_count"),
+            )
+            .join(expense_categories, expense_categories.c.category_id == Category.id)
+            .join(Expense, Expense.id == expense_categories.c.expense_id)
+            .where(
+                Expense.user_id == user_id,
+                Expense.deleted_at.is_(None),
+                Expense.expense_date >= range_start,
+                Expense.expense_date <= range_end,
+            )
+            .group_by(Category.name)
+            .order_by(func.sum(Expense.amount).desc())
+        )
+        categories = [
+            CategoryExpenseSummaryDto(
+                name=row.name,
+                amount=float(row.total),
+                transaction_count=row.tx_count,
+                pct_of_total=(float(row.total) / total_expense * 100) if total_expense > 0 else 0.0,
+            )
+            for row in cat_rows.all()
+        ]
+
+        return Result.ok(
+            PeriodSpendingDto(
+                period_label=period_label,
+                start_date=start,
+                end_date=end,
+                total_expense=total_expense,
+                transaction_count=transaction_count,
+                categories=categories,
+                prev_period_total=prev_total if prev_total > 0 else None,
+                change_pct=change_pct,
+                change_direction=change_direction,
             )
         )
 

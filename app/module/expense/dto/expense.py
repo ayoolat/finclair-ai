@@ -202,6 +202,22 @@ class ExpenseSummaryDto(BaseModel):
     monthly_income: float
 
 
+class PeriodSpendingDto(BaseModel):
+    """Spending over an arbitrary date range (a week, a handful of days, a
+    custom range) — the lighter counterpart to ExpenseSummaryDto, which is
+    locked to whole calendar months."""
+
+    period_label: str                 # "this week", "the last 7 days", "Aug 1 to Aug 15, 2026"
+    start_date: date                  # inclusive, in the app's local timezone
+    end_date: date                    # inclusive
+    total_expense: float
+    transaction_count: int
+    categories: list[CategoryExpenseSummaryDto]
+    prev_period_total: Optional[float]   # same-length window immediately before; None if no prior spend
+    change_pct: Optional[float]          # vs. prev_period_total; None when prev is 0
+    change_direction: Optional[str]      # "less" | "more" | "same"
+
+
 class ExpenseSummaryQueryDto(BaseModel):
     year: Optional[int] = None
     month: Optional[int] = None  # 1-12

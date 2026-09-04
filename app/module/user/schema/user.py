@@ -33,15 +33,7 @@ class User(AuditMixin, Base):
     auth_provider: Mapped[str] = mapped_column(String(20), nullable=False, default=AuthProvider.EMAIL)
     firebase_uid: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     profile_icon: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # What the user wants to be called (set during onboarding) — distinct from the
-    # unique login handle in `username`, which can be an unnatural thing to be
-    # addressed by (e.g. "chinonso_test") in conversational surfaces like Clara.
     preferred_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
-
-    # Personalized daily expense-review reminder. The financial day is always
-    # 00:00–23:59 Africa/Lagos; this only moves *when* the nudge is sent, never
-    # the day boundary. The app maps its named presets (Morning / Afternoon /
-    # Evening / Late Night / Custom) to a concrete hour+minute and sends that.
     reminder_hour: Mapped[int] = mapped_column(SmallInteger, default=21, nullable=False)
     reminder_minute: Mapped[int] = mapped_column(SmallInteger, default=0, nullable=False)
     daily_reminders_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
